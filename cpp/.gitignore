@@ -1,0 +1,5 @@
+# Artefak build C++ / CMake
+build/
+*.obj
+*.o
+_*.txt

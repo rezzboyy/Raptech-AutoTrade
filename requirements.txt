@@ -1,0 +1,11 @@
+# PENTING: versi paket MetaTrader5 harus COCOK dengan build terminal MT5.
+# Paket di PyPI biasanya tertinggal 1-2 build dari terminal terbaru. Jika terminal
+# auto-update ke build yang lebih baru dari paket, koneksi gagal "IPC timeout (-10005)".
+# Solusi: nonaktifkan auto-update terminal, atau upgrade paket saat build cocok tersedia:
+#   pip install --upgrade MetaTrader5
+MetaTrader5>=5.0.6180
+pandas>=2.0.0
+numpy>=1.24.0
+python-dotenv>=1.0.0
+PySide6>=6.6.0
+cryptography>=42.0.0

@@ -1,0 +1,41 @@
+<RCC>
+    <qresource prefix="/">
+        <file>qml/qmldir</file>
+        <file>qml/Theme.qml</file>
+        <file>qml/main.qml</file>
+        <file>qml/AccountBar.qml</file>
+        <file>qml/CField.qml</file>
+        <file>qml/CButton.qml</file>
+        <file>qml/CCombo.qml</file>
+        <file>qml/ThinScrollBar.qml</file>
+        <file>qml/LoginPanel.qml</file>
+        <file>qml/ConfigPanel.qml</file>
+        <file>qml/RiskConfigForm.qml</file>
+        <file>qml/ManualTradePanel.qml</file>
+        <file>qml/ProgrammerPanel.qml</file>
+        <file>qml/StatsPanel.qml</file>
+        <file>qml/PositionsPanel.qml</file>
+        <file>qml/LogPanel.qml</file>
+        <file>qml/CandleChart.qml</file>
+        <file>qml/EquityChart.qml</file>
+        <file>assets/login.svg</file>
+        <file>assets/strategy.svg</file>
+        <file>assets/bolt.svg</file>
+        <file>assets/chart.svg</file>
+        <file>assets/stats.svg</file>
+        <file>assets/activity.svg</file>
+        <file>assets/positions.svg</file>
+        <file>assets/log.svg</file>
+        <file>assets/power.svg</file>
+        <file>assets/save.svg</file>
+        <file>assets/refresh.svg</file>
+        <file>assets/trash.svg</file>
+        <file>assets/folder.svg</file>
+        <file>assets/upload.svg</file>
+        <file>assets/link-off.svg</file>
+        <file>assets/moon.svg</file>
+        <file>assets/sun.svg</file>
+        <file>assets/close.svg</file>
+        <file>assets/account.svg</file>
+    </qresource>
+</RCC>

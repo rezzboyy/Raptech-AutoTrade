@@ -1,0 +1,45 @@
+# Kredensial - JANGAN pernah di-commit
+.env
+account.txt
+
+# Konfigurasi runtime (di-generate dari UI)
+config.json
+
+# Profil kredensial (berisi password tersandi) - JANGAN pernah di-commit
+profiles/
+
+# Rahasia MCP (API Key server MCP MT5) - JANGAN pernah di-commit
+mcp_secret.json
+mcp_profiles/
+
+# Kunci enkripsi lokal - JANGAN pernah di-commit
+.secret_key
+
+# Log
+logs/
+
+# Artefak build PyInstaller
+build/
+dist/
+*.manifest
+
+# Ikon yang di-generate
+ui/assets/icon.ico
+ui/assets/icon.png
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+
+# C++ (CMake/Ninja) & build logs
+cpp/build/
+aqtinstall.log
+*.log
+_*.txt
+.vscode/
+
