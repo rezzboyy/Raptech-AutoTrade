@@ -29,7 +29,11 @@ Rectangle {
                 Row { spacing: 4; Rectangle { width: 14; height: 3; color: Theme.up; anchors.verticalCenter: parent.verticalCenter } Text { text: "Equity"; color: Theme.textSecondary; font.pixelSize: 11 } }
             }
             Item { Layout.fillWidth: true }
-            Text { text: bot ? ("Eq: " + bot.equity.toFixed(2) + " " + bot.currency) : "—"; color: Theme.textPrimary; font.pixelSize: 14; font.bold: true }
+            Text {
+                visible: bot && bot.connected
+                text: bot ? ("Eq: " + bot.equity.toFixed(2) + " " + bot.currency) : ""
+                color: Theme.textPrimary; font.pixelSize: 14; font.bold: true
+            }
         }
 
         Canvas {

@@ -22,6 +22,11 @@ Rectangle {
     Component.onCompleted: {
         refreshProfiles()
         refreshMcpProfiles()
+        if (bot) {
+            var mcpCfg = bot.getMcpConfig()
+            if (mcpCfg.endpoint) endpointField.text = mcpCfg.endpoint
+            if (mcpCfg.hasKey) apiKeyField.placeholderText = mcpCfg.keyPlaceholder
+        }
         // Default ke MCP (metode yang berfungsi di versi C++), Native tetap bisa dipilih.
         if (!root.botConnected && backendMode !== "mcp") {
             backendMode = "mcp"
@@ -190,8 +195,12 @@ Rectangle {
                 }
                 Text {
                     Layout.fillWidth: true
-                    wrapMode: Text.WordWrap; color: Theme.textMuted; font.pixelSize: 10; lineHeight: 1.15
-                    text: "API Key dari MT5: Tools → Options → tab MCP (aktifkan 'Enable internal server')."
+                    wrapMode: Text.WordWrap
+                    color: (bot && bot.getMcpConfig().hasKey) ? Theme.accent : Theme.textMuted
+                    font.pixelSize: 10; lineHeight: 1.15
+                    text: (bot && bot.getMcpConfig().hasKey)
+                        ? "✓ Kunci API MT5 aktif terdeteksi dari mcp_secret.json. Anda bisa langsung klik Login & Connect."
+                        : "API Key dari MT5: Tools → Options → tab MCP (aktifkan 'Enable internal server')."
                 }
             }
 
@@ -234,6 +243,7 @@ Rectangle {
                     text: "Logout"
                     icon.source: "qrc:/assets/link-off.svg"; icon.width: 14; icon.height: 14
                     bg: Theme.down; fg: "#ffffff"
+                    visible: root.botConnected
                     enabled: root.botConnected
                     Layout.preferredHeight: 40
                     Layout.preferredWidth: 110

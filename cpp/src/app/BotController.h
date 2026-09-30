@@ -77,6 +77,7 @@ public slots:
     void setMcpConfig(const QString &endpoint, const QString &apiKey);
     void refreshStats();
     QVariantMap getConfig();
+    QVariantMap getMcpConfig();
     bool applyConfig(const QVariantMap &cfg);
     bool saveConfig(const QVariantMap &cfg);
     QVariantList getStrategies();

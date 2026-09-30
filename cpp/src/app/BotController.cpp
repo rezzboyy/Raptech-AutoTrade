@@ -302,6 +302,20 @@ QVariantMap BotController::getConfig()
     return ConfigStore::toJson(settings()).toVariantMap();
 }
 
+QVariantMap BotController::getMcpConfig()
+{
+    const QString ep = settings().mcpEndpoint.trimmed().isEmpty()
+        ? QStringLiteral("http://127.0.0.1:22346/mcp")
+        : settings().mcpEndpoint;
+    const bool hasKey = !settings().mcpApiKey.trimmed().isEmpty();
+    return QVariantMap{
+        {"endpoint", ep},
+        {"hasKey", hasKey},
+        {"keyPlaceholder", hasKey ? QStringLiteral("●●●●●●●● (Tersimpan di mcp_secret.json)")
+                                  : QStringLiteral("kosongkan jika pakai profil")}
+    };
+}
+
 bool BotController::applyConfig(const QVariantMap &cfg)
 {
     const QStringList errs = ConfigStore::apply(QJsonObject::fromVariantMap(cfg), settings());

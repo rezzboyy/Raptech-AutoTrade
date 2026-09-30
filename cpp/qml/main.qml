@@ -67,11 +67,13 @@ ApplicationWindow {
                 Rectangle { visible: window.botConnected; width: 1; height: 18; color: Theme.divider }
 
                 Button {
-                    text: Theme.isDark ? "Dark" : "Light"
+                    text: Theme.isDark ? "Light" : "Dark"
                     flat: true
-                    icon.source: Theme.isDark ? "qrc:/assets/moon.svg" : "qrc:/assets/sun.svg"
+                    icon.source: Theme.isDark ? "qrc:/assets/sun.svg" : "qrc:/assets/moon.svg"
                     icon.width: 14; icon.height: 14
                     onClicked: Theme.isDark = !Theme.isDark
+                    ToolTip.visible: hovered
+                    ToolTip.text: Theme.isDark ? "Beralih ke Mode Terang" : "Beralih ke Mode Gelap"
                 }
                 Rectangle { width: 1; height: 18; color: Theme.divider }
 
@@ -100,10 +102,11 @@ ApplicationWindow {
                     id: leftTabs
                     Layout.fillWidth: true
                     TabButton { text: "Login" }
-                    TabButton { text: "Manual" }
-                    TabButton { text: "Order" }
+                    TabButton { text: "Strategi" }
+                    TabButton { text: "Order Manual" }
                     TabButton { text: "Programmer" }
                     TabButton { text: "Statistik" }
+                    TabButton { text: "Jurnal" }
                 }
                 StackLayout {
                     Layout.fillWidth: true
@@ -114,6 +117,7 @@ ApplicationWindow {
                     ManualTradePanel {}
                     ProgrammerPanel {}
                     StatsPanel {}
+                    JournalPanel {}
                 }
                 LogPanel {
                     logModel: logModel

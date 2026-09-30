@@ -18,6 +18,7 @@
         <file>qml/LogPanel.qml</file>
         <file>qml/CandleChart.qml</file>
         <file>qml/EquityChart.qml</file>
+        <file>qml/JournalPanel.qml</file>
         <file>assets/login.svg</file>
         <file>assets/strategy.svg</file>
         <file>assets/bolt.svg</file>

@@ -36,11 +36,12 @@ Rectangle {
                 font.pixelSize: 12
                 model: root.symbolModel
                 displayText: (count > 0 && currentIndex >= 0) ? currentText : "pilih simbol"
-                onActivated: bot.setChartSymbol(currentText)
+                onActivated: if (bot) bot.setChartSymbol(currentText)
             }
             Item { Layout.fillWidth: true }
             Text {
-                text: root.candles.length > 0 ? "Last: " + root.lastClose().toFixed(5) : "—"
+                visible: root.candles.length > 0
+                text: root.candles.length > 0 ? ("Last: " + root.lastClose().toFixed(5)) : ""
                 color: Theme.textPrimary; font.pixelSize: 13; font.bold: true
             }
         }
