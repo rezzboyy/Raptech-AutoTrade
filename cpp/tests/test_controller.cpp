@@ -263,6 +263,22 @@ private slots:
         QCOMPARE(header, QStringLiteral("time,action,symbol,detail,ok"));
         QFile::remove(csvPath);
     }
+
+    // Log: pembersihan berkas log via clearLogs().
+    void logs_clear()
+    {
+        BotController ctrl;
+        QDir().mkpath("logs");
+        QFile f("logs/bot.log");
+        QVERIFY(f.open(QIODevice::WriteOnly | QIODevice::Text));
+        f.write("test log entry\n");
+        f.close();
+        QVERIFY(QFile::exists("logs/bot.log"));
+        QVERIFY(QFileInfo("logs/bot.log").size() > 0);
+
+        ctrl.clearLogs();
+        QCOMPARE(QFileInfo("logs/bot.log").size(), 0);
+    }
 };
 
 QTEST_GUILESS_MAIN(TestController)

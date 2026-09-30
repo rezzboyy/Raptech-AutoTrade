@@ -661,6 +661,14 @@ void BotController::clearJournal()
     emit journalChanged();
 }
 
+void BotController::clearLogs()
+{
+    QFile f(QStringLiteral("logs/bot.log"));
+    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        f.close();
+    }
+}
+
 bool BotController::exportJournalCsv(const QString &pathIn)
 {
     QString path = pathIn;

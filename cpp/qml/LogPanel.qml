@@ -17,14 +17,35 @@ Rectangle {
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 7
+            spacing: 6
             Image { source: "qrc:/assets/log.svg"; sourceSize.width: 14; sourceSize.height: 14 }
             Text { text: "Log"; color: Theme.textPrimary; font.pixelSize: 13; font.bold: true }
             Item { Layout.fillWidth: true }
             CButton {
-                text: "Ekspor"; icon.source: "qrc:/assets/save.svg"; icon.width: 12; icon.height: 12
-                font.pixelSize: 10; Layout.preferredHeight: 24; Layout.preferredWidth: 92
+                text: "Ekspor"
+                icon.source: "qrc:/assets/save.svg"
+                icon.width: 12; icon.height: 12
+                font.pixelSize: 10
+                Layout.preferredHeight: 24
+                leftPadding: 8; rightPadding: 8
+                ToolTip.visible: hovered
+                ToolTip.text: "Ekspor log ke CSV atau TXT"
                 onClicked: logSaveDialog.open()
+            }
+            CButton {
+                text: "Bersihkan"
+                icon.source: "qrc:/assets/trash.svg"
+                icon.width: 12; icon.height: 12
+                font.pixelSize: 10
+                Layout.preferredHeight: 24
+                leftPadding: 8; rightPadding: 8
+                enabled: list.count > 0
+                ToolTip.visible: hovered
+                ToolTip.text: "Bersihkan seluruh tampilan log"
+                onClicked: {
+                    if (bot) bot.clearLogs()
+                    if (logModel) logModel.clear()
+                }
             }
         }
 

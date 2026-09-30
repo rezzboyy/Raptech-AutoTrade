@@ -106,6 +106,7 @@ public slots:
     bool exportJournalCsv(const QString &path);
     bool exportLogs(const QString &path);
     void clearJournal();
+    void clearLogs();
 
 signals:
     void logMessage(const QString &msg);
