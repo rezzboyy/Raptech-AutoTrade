@@ -26,6 +26,8 @@ dist/
 # Ikon yang di-generate
 ui/assets/icon.ico
 ui/assets/icon.png
+legacy_python/ui/assets/icon.ico
+legacy_python/ui/assets/icon.png
 
 # Python
 __pycache__/
@@ -35,6 +37,9 @@ venv/
 env/
 *.egg-info/
 .pytest_cache/
+legacy_python/.pytest_cache/
+legacy_python/build/
+legacy_python/dist/
 
 # C++ (CMake/Ninja) & build logs
 cpp/build/

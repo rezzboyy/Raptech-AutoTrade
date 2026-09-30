@@ -1,53 +1,30 @@
-# XAVIQ Trading Engine (MT5 Bot)
+# XAVIQ Trading Engine (C++ / Qt 6)
 
-Bot trading modular untuk MetaTrader 5 berbasis Python. Struktur ini adalah fondasi
-yang siap dikembangkan: koneksi, data pasar, strategi, manajemen risiko, dan eksekusi
-order sudah dipisah per modul.
+Bot trading MetaTrader 5 (MT5) berperforma tinggi berbasis **C++ & Qt 6.8.1 (MinGW)**.
+Ringan (RAM ~45–70 MB), responsif, backend **MCP-only** (kebal masalah versi terminal MT5),
+dan Mode Programmer bertenaga **JavaScript (QJSEngine)**.
 
 > ⚠️ **Peringatan risiko:** Trading otomatis berisiko kehilangan dana. Selalu uji di
-> **akun demo** terlebih dahulu. Kode ini disediakan sebagai kerangka, bukan jaminan profit.
+> **akun demo** terlebih dahulu dengan lot kecil (0.01).
 
-## Prasyarat
+---
 
-- Windows (library `MetaTrader5` hanya berjalan di Windows).
-- Terminal **MetaTrader 5** terpasang dan sudah login minimal sekali secara manual.
-- Python 3.10+.
+## Cara Menjalankan C++ (Sangat Mudah)
 
-## Instalasi
+Di folder root tersedia berkas `.bat` praktis (cukup dobel-klik):
 
+1. **`run_cpp_dev.bat`**: Build otomatis & jalankan GUI XAVIQ C++ mode DEV.
+2. **`run_cpp_tests.bat`**: Jalankan seluruh 7 unit test suite C++ (QtTest/ctest).
+3. **`deploy_cpp.bat`**: Buat rilis mandiri (standalone ~94 MB) di `C:\XaviqCppDist\XAVIQTradingEngine\`.
+
+---
+
+## Arsip Kode Python (Legacy)
+
+Implementasi referensi versi Python lama disimpan rapi di folder [`legacy_python/`](legacy_python/).
+Untuk menjalankan 264 unit test Python:
 ```bash
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-## Konfigurasi
-
-1. Salin `.env.example` menjadi `.env`.
-2. Isi kredensial akun MT5 dan parameter trading Anda.
-
-```bash
-copy .env.example .env
-```
-
-Parameter penting di `.env`:
-
-| Variabel            | Keterangan                                   |
-|---------------------|----------------------------------------------|
-| `MT5_LOGIN`         | Nomor akun                                   |
-| `MT5_PASSWORD`      | Password akun                                |
-| `MT5_SERVER`        | Nama server broker                           |
-| `SYMBOL`            | Simbol (Exness Standard pakai suffix, mis. EURUSDm) |
-| `TIMEFRAME`         | M1/M5/M15/M30/H1/H4/D1                        |
-| `RISK_PER_TRADE`    | Risiko per trade (0.01 = 1% dari balance)    |
-| `MAX_OPEN_POSITIONS`| Maksimum posisi terbuka bersamaan            |
-
-## Menjalankan
-
-**Mode GUI (PySide6 + QML)** — direkomendasikan:
-
-```bash
-python app.py
+legacy_python\run_tests.bat
 ```
 
 Alur pemakaian di panel:

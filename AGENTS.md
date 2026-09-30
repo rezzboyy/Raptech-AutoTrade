@@ -8,12 +8,12 @@
 
 ## 1. Ringkasan Proyek
 
-**XAVIQ Trading Engine** = bot trading MetaTrader 5 (MT5) berbasis **Python + PySide6/QML**.
-- GUI desktop (Windows). Entry: `app.py` (GUI), `main.py` (headless/CLI).
-- Terhubung ke MT5 lewat **dua backend**: `native` (library `MetaTrader5`) dan
-  `mcp` (server MCP bawaan terminal, kebal masalah versi library).
+**XAVIQ Trading Engine** = bot trading MetaTrader 5 (MT5).
+- **Mesin Utama (C++ / Qt 6.8.1)** di folder `cpp/`: GUI desktop C++ native, ringan (~45 MB RAM),
+  backend **MCP-only** (kebal versi MT5), Mode Programmer JavaScript (`QJSEngine`), standalone EXE.
+- **Arsip Python (PySide6)** di folder `legacy_python/`: implementasi referensi original (264 unit tests).
 - Fitur utama: auto-trading (strategi bawaan + **Mode Programmer**/skrip kustom),
-  order manual, manajemen risiko & proteksi, chart candle, statistik.
+  order manual, manajemen risiko & proteksi, chart candle, statistik, jurnal aksi.
 
 Lingkungan: **Windows Server/VPS**, akun **Exness** (MT5), akun uji = DEMO.
 
@@ -46,45 +46,40 @@ Lingkungan: **Windows Server/VPS**, akun **Exness** (MT5), akun uji = DEMO.
   lalu baca `_out.txt`. Hapus file setelah dipakai.
 - **Long-running** (dev server, build): jalankan sebagai background/proses lama, atau
   gunakan timeout besar. Build EXE ~2 menit.
-- Test: `python -m pytest -q`
-- Smoke QML (offscreen, tanpa layar):
-  ```python
-  import os; os.environ["QT_QPA_PLATFORM"]="offscreen"
-  # load ui/qml/main.qml lewat QQmlApplicationEngine + BotController, cek rootObjects()
-  ```
-- Build EXE: `powershell -ExecutionPolicy Bypass -File build.ps1` (jalankan
-  `tools/make_icon.py` + `pyinstaller raptech_bot.spec`). Hasil: `dist/RaptechMT5Bot/RaptechMT5Bot.exe`.
+- Build & Run C++ DEV: `run_cpp_dev.bat` (atau `powershell -ExecutionPolicy Bypass -File C:\XaviqCpp\build.ps1`)
+- Test C++: `run_cpp_tests.bat` (atau `powershell -ExecutionPolicy Bypass -File C:\XaviqCpp\runtests.ps1`) — 7 suite ctest
+- Smoke C++ UI: `powershell -ExecutionPolicy Bypass -File C:\XaviqCpp\smoke.ps1` (offscreen, mode `--smoke`)
+- Deploy Standalone C++: `deploy_cpp.bat` (hasil di `C:\XaviqCppDist\XAVIQTradingEngine\`)
+- Test Python (Legacy): `legacy_python\run_tests.bat` (atau dari folder `legacy_python`: `python -m pytest -q`)
 
 ---
 
 ## 4. Arsitektur & Struktur
 
 ```
-app.py / main.py          # entry GUI / headless
-config/settings.py        # Settings (dataclass) dari env + default; _load_mcp_secret()
-config/  , config.json    # config.json = runtime tersimpan (gitignored)
-src/
-  controller.py           # jembatan QML<->bot; worker SATU thread; semua call MT5 di worker
-  bot_engine.py           # operasi tingkat tinggi via backend; loop trading
-  trade_rules.py          # aturan risiko/order backend-agnostik
-  config_store.py         # simpan/muat/validasi config.json (apply mendukung partial)
-  credential_store.py     # profil login native (terenkripsi)
-  mcp_profile_store.py    # profil MCP + mcp_secret.json (auto-load)
-  secure_store.py         # enkripsi Fernet/AES (.secret_key / MASTER_PASSWORD)
-  mcp_client.py           # klien HTTP/JSON-RPC ke server MCP
-  backends/
-    base.py               # antarmuka TradingBackend
-    native_backend.py     # library MetaTrader5
-    mcp_backend.py        # server MCP (kebal versi)
-strategies/
-  base.py                 # Strategy + registry + skema PARAMS
-  ma_cross/rsi/bollinger/macd/stochastic/multi_indicator.py
-  script_runtime.py       # SANDBOX Mode Programmer (indikator, ctx, ScriptStrategy)
-  scripts/*.py            # skrip contoh (ema_cross, cbot_style, managed_exit, stoch_adx, dll)
-ui/qml/                   # main.qml + components/ (panel modular) + Theme
-tools/                    # make_icon.py, CekVersi.py/.bat, verify_mcp.py (jalankan dari root)
-tests/                    # pytest (unit + property)
-docs/                     # PANDUAN_TRADING, PANDUAN_SCRIPT, MCP_BACKEND, PRODUCTION, PROTEKSI_AUDIT
+run_cpp_dev.bat           # Launcher C++ dev (build + jalankan GUI)
+run_cpp_tests.bat         # Runner 7 unit test suite C++
+deploy_cpp.bat            # Pemaket rilis mandiri C++
+cpp/                      # Sumber C++ (Qt 6.8.1 / MinGW)
+  CMakeLists.txt          # Build via junction C:\XaviqCpp
+  src/
+    core/                 # Logger, Settings, ConfigStore, SecureStore
+    net/                  # McpClient (HTTP JSON-RPC)
+    backend/              # Models, SymbolUtils, McpParse, McpBackend
+    indicators/           # 22 Indikator matematis murni
+    strategy/             # Strategy base & built-in strategies
+    engine/               # TradeRules (risiko) & BotEngine (trading loop)
+    script/               # ScriptContext & ScriptStrategy (QJSEngine)
+    app/                  # Worker (QThread) & BotController (QObject QML bridge)
+    ui/                   # JsHighlighter (QSyntaxHighlighter native)
+    main.cpp              # Entry point C++
+  qml/                    # UI QML native C++
+  scripts/                # Contoh skrip JavaScript Mode Programmer
+docs/                     # Dokumentasi trading, script, MCP
+legacy_python/            # Arsip referensi kode Python (PySide6)
+  app.py / main.py        # Entry GUI / CLI Python lama
+  src/ , ui/ , strategies/
+  tests/                  # 264 unit tests pytest
 ```
 
 **Thread-safety:** SEMUA panggilan MT5/MCP terjadi di **satu worker thread**. QML
