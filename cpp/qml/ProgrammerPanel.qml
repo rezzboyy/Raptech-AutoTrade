@@ -115,9 +115,16 @@ Rectangle {
 
             RowLayout {
                 Layout.fillWidth: true
+                spacing: 6
                 Image { source: "qrc:/assets/strategy.svg"; sourceSize.width: 16; sourceSize.height: 16 }
-                Text { text: "Mode Programmer (JavaScript)"; color: Theme.textPrimary; font.pixelSize: 14; font.bold: true }
-                Item { Layout.fillWidth: true }
+                Text {
+                    text: "Mode Programmer"
+                    color: Theme.textPrimary
+                    font.pixelSize: 14
+                    font.bold: true
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
                 CButton { text: "Bantuan API"; icon.source: "qrc:/assets/log.svg"; icon.width: 12; icon.height: 12; Layout.preferredHeight: 28; font.pixelSize: 11; onClicked: apiHelpDialog.open() }
                 CButton { text: "SETTINGS"; icon.source: "qrc:/assets/strategy.svg"; icon.width: 12; icon.height: 12; Layout.preferredHeight: 28; font.pixelSize: 11; onClicked: settingsHelpDialog.open() }
                 CButton { text: "Template"; Layout.preferredHeight: 28; font.pixelSize: 11; onClicked: editor.text = bot.scriptTemplate() }

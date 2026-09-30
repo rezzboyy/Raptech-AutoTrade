@@ -46,21 +46,22 @@ Rectangle {
         // Header
         RowLayout {
             Layout.fillWidth: true
-            spacing: 8
+            spacing: 6
 
             Image { source: "qrc:/assets/activity.svg"; sourceSize.width: 16; sourceSize.height: 16 }
             Text {
-                text: "Jurnal Aksi Trading"
+                text: "Jurnal Aksi"
                 color: Theme.textPrimary
                 font.pixelSize: 14
                 font.bold: true
+                elide: Text.ElideRight
             }
 
             Rectangle {
                 color: Theme.surfaceAlt
                 radius: 4
                 Layout.preferredHeight: 20
-                Layout.preferredWidth: countText.implicitWidth + 12
+                Layout.preferredWidth: countText.implicitWidth + 10
                 Text {
                     id: countText
                     anchors.centerIn: parent
@@ -74,20 +75,28 @@ Rectangle {
             Item { Layout.fillWidth: true }
 
             CButton {
-                text: "Ekspor CSV"
+                text: "Ekspor"
                 icon.source: "qrc:/assets/save.svg"
-                icon.width: 13; icon.height: 13
+                icon.width: 12; icon.height: 12
+                font.pixelSize: 11
                 Layout.preferredHeight: 28
+                leftPadding: 6; rightPadding: 6
                 enabled: root.journalEntries.length > 0
+                ToolTip.visible: hovered
+                ToolTip.text: "Ekspor riwayat jurnal ke CSV"
                 onClicked: saveCsvDialog.open()
             }
 
             CButton {
                 text: "Bersihkan"
                 icon.source: "qrc:/assets/trash.svg"
-                icon.width: 13; icon.height: 13
+                icon.width: 12; icon.height: 12
+                font.pixelSize: 11
                 Layout.preferredHeight: 28
+                leftPadding: 6; rightPadding: 6
                 enabled: root.journalEntries.length > 0
+                ToolTip.visible: hovered
+                ToolTip.text: "Hapus seluruh riwayat jurnal"
                 onClicked: if (bot) bot.clearJournal()
             }
         }

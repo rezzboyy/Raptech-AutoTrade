@@ -18,8 +18,19 @@ Button {
     readonly property bool hasIcon: String(icon.source).length > 0
     font.pixelSize: 12
     implicitHeight: 32
-    leftPadding: 10
-    rightPadding: 10
+
+    // Matikan inset bawaan Material agar background selalu mengisi penuh ukuran tombol
+    topInset: 0
+    bottomInset: 0
+    leftInset: 0
+    rightInset: 0
+
+    // Matikan padding vertikal bawaan Material agar RowLayout menengahkan konten secara vertikal & simetris
+    padding: 0
+    topPadding: 0
+    bottomPadding: 0
+    leftPadding: 8
+    rightPadding: 8
     hoverEnabled: true
 
     contentItem: RowLayout {
