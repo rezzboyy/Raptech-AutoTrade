@@ -178,7 +178,93 @@ private slots:
         QVERIFY(tpl.contains("SETTINGS"));
         QVERIFY(tpl.contains("trade_start_time"));
     }
+
+    // Profil MCP: simpan (terenkripsi) -> muat -> hapus roundtrip.
+    void mcpProfile_saveLoadDelete()
+    {
+        BotController ctrl;
+        const QString profName = "unit_test_mcp_profile";
+        QVariantMap cfg{{"endpoint", "http://127.0.0.1:22346/mcp"}, {"api_key", "secret_key_123"}};
+        QVERIFY(ctrl.connectMcp(cfg, profName));
+
+        QVariantList profiles = ctrl.listMcpProfiles();
+        bool found = false;
+        QString profPath;
+        for (const QVariant &v : profiles) {
+            QVariantMap m = v.toMap();
+            if (m.value("name").toString() == profName) {
+                found = true;
+                profPath = m.value("file").toString();
+                break;
+            }
+        }
+        QVERIFY(found);
+
+        QVariantMap loaded = ctrl.loadMcpProfileFile(profPath);
+        QCOMPARE(loaded.value("name").toString(), profName);
+        QCOMPARE(loaded.value("endpoint").toString(), QStringLiteral("http://127.0.0.1:22346/mcp"));
+        QCOMPARE(settings().mcpApiKey, QStringLiteral("secret_key_123"));
+
+        QVERIFY(ctrl.deleteMcpProfile(profPath));
+        QVERIFY(!QFile::exists(profPath));
+    }
+
+    // Profil Native: simpan (password terenkripsi) -> muat -> hapus roundtrip.
+    void nativeProfile_saveLoadDelete()
+    {
+        BotController ctrl;
+        const QString profName = "unit_test_native_profile";
+        QVariantMap creds{
+            {"login", 12345678LL},
+            {"password", "pass_secret_abc"},
+            {"server", "Exness-Real"},
+            {"path", "C:/MT5/terminal64.exe"}
+        };
+        QVERIFY(ctrl.loginAndConnect(creds, profName));
+
+        QVariantList profiles = ctrl.listProfiles();
+        bool found = false;
+        QString profPath;
+        for (const QVariant &v : profiles) {
+            QVariantMap m = v.toMap();
+            if (m.value("name").toString() == profName) {
+                found = true;
+                profPath = m.value("file").toString();
+                break;
+            }
+        }
+        QVERIFY(found);
+
+        QVariantMap loaded = ctrl.loadProfileFile(profPath);
+        QCOMPARE(loaded.value("name").toString(), profName);
+        QCOMPARE(settings().login, 12345678LL);
+        QCOMPARE(settings().server, QStringLiteral("Exness-Real"));
+        QCOMPARE(settings().password, QStringLiteral("pass_secret_abc"));
+
+        QVERIFY(ctrl.deleteProfile(profPath));
+        QVERIFY(!QFile::exists(profPath));
+    }
+
+    // Jurnal: ekspor CSV dan pembersihan.
+    void journal_exportCsvAndClear()
+    {
+        BotController ctrl;
+        ctrl.clearJournal();
+        QCOMPARE(ctrl.journal().size(), 0);
+
+        const QString csvPath = "unit_test_journal.csv";
+        QVERIFY(ctrl.exportJournalCsv(csvPath));
+        QVERIFY(QFile::exists(csvPath));
+
+        QFile f(csvPath);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        QString header = QString::fromUtf8(f.readLine()).trimmed();
+        f.close();
+        QCOMPARE(header, QStringLiteral("time,action,symbol,detail,ok"));
+        QFile::remove(csvPath);
+    }
 };
 
 QTEST_GUILESS_MAIN(TestController)
 #include "test_controller.moc"
+
