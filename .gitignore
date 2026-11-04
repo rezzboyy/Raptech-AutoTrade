@@ -1,0 +1,30 @@
+# Raptech AutoTrade — Git Ignore
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.env
+.env.*
+
+# Secrets, Credentials & Local Runtime Data
+.secret_key
+data/profiles/*.json
+!data/profiles/default_example.json
+data/*.json
+data/history/*
+logs/*
+backups/*
+exports/*
+
+# Testing & Cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build & Release Binaries (Slim & Clean)
+build/
+dist/
+dist_customer/
+release/
+*.zip
+*.spec

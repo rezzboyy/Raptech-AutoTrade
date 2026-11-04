@@ -1,0 +1,21 @@
+{
+  "profile_name": "Exness-Demo-Default",
+  "backend": "native",
+  "login": 0,
+  "password": "",
+  "server": "Exness-MT5Trial",
+  "path": "",
+  "symbols": ["XAUUSDm", "EURUSDm", "BTCUSDm"],
+  "strategy": "fast_gold_scalper",
+  "risk": {
+    "fixed_lot": 0.01,
+    "risk_percent": 1.0,
+    "virtual_sl_points": 300,
+    "virtual_tp_points": 500,
+    "trailing_enabled": true,
+    "trail_start_points": 150,
+    "trail_step_points": 50,
+    "max_drawdown_percent": 5.0,
+    "min_margin_level": 500.0
+  }
+}
