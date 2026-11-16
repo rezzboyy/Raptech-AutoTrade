@@ -23,8 +23,13 @@ logger = get_logger("controller")
 class TradeController:
     """High-level system coordinator connecting UI/CLI with BotEngine and TradingBackend."""
 
-    def __init__(self, profile: Optional[AccountProfile] = None) -> None:
+    def __init__(
+        self,
+        profile: Optional[AccountProfile] = None,
+        state_store: Optional[StateStore] = None,
+    ) -> None:
         self.profile = profile or load_profile()
+        self.state_store = state_store
         self.backend: Optional[TradingBackend] = None
         self.engine: Optional[BotEngine] = None
         self.watchdog = Watchdog()
@@ -86,6 +91,7 @@ class TradeController:
                 backend=self.backend,
                 profile=self.profile,
                 on_log=self.dispatch_log,
+                state_store=self.state_store,
             )
             # Start background loop
             self._bg_task = asyncio.create_task(self.engine.run_loop(poll_interval=1.0))

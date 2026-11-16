@@ -179,11 +179,12 @@ def test_aura_nexus_update_tick_telemetry():
     assert "-10.00 / 70" in hud["ema_distance"]
 
 
-def test_bot_engine_basket_tp_sync_and_grid_spacing():
+def test_bot_engine_basket_tp_sync_and_grid_spacing(tmp_path):
     from unittest.mock import MagicMock
     from backend.base import SymbolSpec
     from core.bot_engine import BotEngine
     from core.config_store import AccountProfile
+    from core.state_store import StateStore
 
     mock_backend = MagicMock()
     mock_backend.symbol_spec.return_value = SymbolSpec(
@@ -192,7 +193,8 @@ def test_bot_engine_basket_tp_sync_and_grid_spacing():
     )
 
     prof = AccountProfile(strategy="aura_nexus")
-    engine = BotEngine(backend=mock_backend, profile=prof)
+    store = StateStore(tmp_path / "test_state1.json")
+    engine = BotEngine(backend=mock_backend, profile=prof, state_store=store)
 
     # Buka 2 layer posisi BUY
     pos1 = Position(ticket=101, symbol="XAUUSDm", type="BUY", volume=0.01, price_open=2700.0, price_current=2699.0)
@@ -212,4 +214,76 @@ def test_bot_engine_basket_tp_sync_and_grid_spacing():
     expected_tp = 2700.00
     assert engine.risk_manager.virtual_states[101].virtual_tp == expected_tp
     assert engine.risk_manager.virtual_states[102].virtual_tp == expected_tp
+
+
+def test_aura_nexus_initial_entry_with_m15_feed():
+    strat = AuraNexusScalper(m15_adx_threshold=10.0, max_ema_distance=200.0, enable_red_zone=0)
+    t0 = datetime(2026, 3, 24, 14, 0, 0, tzinfo=timezone.utc)
+    
+    # 30 M15 candles in uptrend
+    m15_candles = [
+        Candle(time=t0 + timedelta(minutes=15*i), open=2600.0 + i*2.0, high=2603.0 + i*2.0, low=2599.0 + i*2.0, close=2602.0 + i*2.0, tick_volume=200)
+        for i in range(30)
+    ]
+    
+    # 30 M1 candles
+    m1_candles = [
+        Candle(time=t0 + timedelta(minutes=i), open=2650.0 + i*0.2, high=2651.0 + i*0.2, low=2649.5 + i*0.2, close=2650.5 + i*0.2, tick_volume=100)
+        for i in range(30)
+    ]
+    
+    # Test initial entry when existing_positions is empty
+    sig = strat.generate_signal(m1_candles, m15_candles=m15_candles, existing_positions=[])
+    assert sig == SIGNAL_BUY
+    assert "BUY only" in strat.get_hud_info()["trend_bias"]
+
+
+@pytest.mark.asyncio
+async def test_bot_engine_intrabar_dca_trigger(tmp_path):
+    from unittest.mock import MagicMock
+    from backend.base import SymbolSpec, Tick, OrderResult
+    from core.bot_engine import BotEngine
+    from core.config_store import AccountProfile
+    from core.state_store import StateStore
+
+    mock_backend = MagicMock()
+    mock_backend.symbol_spec.return_value = SymbolSpec(
+        symbol="XAUUSDm", digits=2, point=0.01, volume_min=0.01, volume_max=100.0,
+        volume_step=0.01, tick_value=1.0, tick_size=0.01
+    )
+    mock_backend.get_candles.return_value = [
+        Candle(time=datetime(2026, 3, 24, 14, i), open=2700.0, high=2701.0, low=2699.0, close=2700.5, tick_volume=100)
+        for i in range(30)
+    ]
+    # Posisi awal BUY di 2700.0
+    pos1 = Position(ticket=5001, symbol="XAUUSDm", type="BUY", volume=0.01, price_open=2700.0, price_current=2698.5)
+    mock_backend.positions.return_value = [pos1]
+    
+    # Harga saat ini turun 150 poin (1.50 USD) menjadi 2698.50 -> memicu grid DCA (grid_step_points=100)
+    mock_backend.get_tick.return_value = Tick(
+        bid=2698.30,
+        ask=2698.50,
+        time=datetime(2026, 3, 24, 14, 30),
+    )
+    from backend.base import AccountInfo
+    mock_backend.account_info.return_value = AccountInfo(
+        login=12345, server="Demo", balance=1000.0, equity=1000.0, profit=0.0, margin=0.0, free_margin=1000.0, margin_level=9999.0, currency="USD"
+    )
+    mock_backend.send_order.return_value = OrderResult(ok=True, ticket=5002, price=2698.50, volume=0.01)
+
+    prof = AccountProfile(strategy="aura_nexus")
+    store = StateStore(tmp_path / "test_state2.json")
+    engine = BotEngine(backend=mock_backend, profile=prof, state_store=store)
+    engine.auto_trading_enabled = True
+    engine.strategy.last_hud_info["trend_bias"] = "BUY only"
+    engine.order_manager.send_market_order = MagicMock(
+        return_value=OrderResult(ok=True, ticket=5002, price=2698.50, volume=0.01)
+    )
+
+    # Jalankan tick_step
+    await engine.tick_step()
+    
+    # Pastikan order manager dipanggil untuk mengirim order DCA layer kedua
+    assert engine.order_manager.send_market_order.called
+
 

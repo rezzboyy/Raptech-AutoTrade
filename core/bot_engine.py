@@ -330,31 +330,95 @@ class BotEngine:
             if not spec:
                 continue
 
-            # Fetch candles for symbol
+            # Fetch candles for symbol (support multi-timeframe strategy)
+            candles_count = getattr(self.strategy, "required_candles", 150)
             candles = await asyncio.to_thread(
-                self.backend.get_candles, symbol, self.current_timeframe, 150
+                self.backend.get_candles, symbol, self.current_timeframe, candles_count
             )
             if len(candles) < 25:
                 continue
 
-            # Anti-flicker / Closed bar confirmation:
-            # We strictly evaluate confirmed closed bar (candles[-2]) to prevent intrabar repainting!
-            confirmed_closed_bar = candles[-2]
-            last_seen_time = self._last_bar_time.get(symbol)
-            if last_seen_time == confirmed_closed_bar.time:
-                # Already evaluated on this closed candle, skip until next bar closes
-                continue
-
-            # Pass strictly confirmed closed candles to strategy so indicators compute on closed bars
-            confirmed_candles = candles[:-1] if len(candles) > 1 else candles
-            signal = self.strategy.generate_signal(confirmed_candles)
-
-            if signal not in (SIGNAL_BUY, SIGNAL_SELL):
-                self._last_bar_time[symbol] = confirmed_closed_bar.time
-                continue
+            # Multi-Timeframe M15 Fetching if requested by strategy
+            m15_candles = None
+            if getattr(self.strategy, "needs_m15", False) or hasattr(self.strategy, "m15_ema_period"):
+                try:
+                    m15_candles = await asyncio.to_thread(
+                        self.backend.get_candles, symbol, "M15", 150
+                    )
+                except Exception:
+                    m15_candles = None
 
             # Existing active positions on this symbol
             sym_positions = [p for p in positions if p.symbol == symbol]
+            tick = await asyncio.to_thread(self.backend.get_tick, symbol)
+
+            # ---------------------------------------------------------
+            # EVALUATION LOGIC:
+            # Skenario 1: Grid DCA Intrabar Layer Addition (Hedging/Basket Mode)
+            # Skenario 2: Initial Basket Entry / Closed-Bar Pattern Evaluation
+            # ---------------------------------------------------------
+            signal: Optional[str] = None
+            is_dca_layer = False
+            confirmed_closed_bar = candles[-2]
+            last_seen_time = self._last_bar_time.get(symbol)
+
+            # Check if active basket exists for hedging/DCA
+            if self.allow_hedging and sym_positions:
+                basket_dir = sym_positions[0].type
+                same_dir_pos = [p for p in sym_positions if p.type == basket_dir]
+                max_pos = getattr(
+                    self.strategy,
+                    "max_open_positions",
+                    getattr(self.profile.risk, "max_open_positions", 3),
+                )
+                grid_pts = getattr(self.strategy, "grid_step_points", 0)
+
+                if len(same_dir_pos) < max_pos and grid_pts > 0:
+                    point = spec.point if spec.point > 0 else 0.01
+                    min_dist = grid_pts * point
+                    curr_price = (tick.ask if basket_dir == SIGNAL_BUY else tick.bid) if tick else confirmed_closed_bar.close
+
+                    # Check cooldown between DCA additions (5 seconds)
+                    last_entry = self._last_entry_time.get(symbol, 0.0)
+                    if (now - last_entry >= 5.0):
+                        if basket_dir == SIGNAL_BUY:
+                            lowest_buy = min(p.price_open for p in same_dir_pos)
+                            if curr_price <= (lowest_buy - min_dist):
+                                trend_bias = getattr(self.strategy, "last_hud_info", {}).get("trend_bias", "")
+                                if "SELL only" not in trend_bias:
+                                    signal = SIGNAL_BUY
+                                    is_dca_layer = True
+                        else:  # SIGNAL_SELL
+                            highest_sell = max(p.price_open for p in same_dir_pos)
+                            if curr_price >= (highest_sell + min_dist):
+                                trend_bias = getattr(self.strategy, "last_hud_info", {}).get("trend_bias", "")
+                                if "BUY only" not in trend_bias:
+                                    signal = SIGNAL_SELL
+                                    is_dca_layer = True
+
+            # If not a DCA layer trigger, evaluate standard closed bar strategy signal
+            if not signal:
+                if last_seen_time == confirmed_closed_bar.time:
+                    # Already evaluated on this closed candle, skip until next bar closes
+                    continue
+
+                confirmed_candles = candles[:-1] if len(candles) > 1 else candles
+
+                import inspect
+                sig_params = inspect.signature(self.strategy.generate_signal).parameters
+                call_kwargs = {}
+                if "m15_candles" in sig_params or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig_params.values()):
+                    call_kwargs["m15_candles"] = m15_candles
+                if "existing_positions" in sig_params or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig_params.values()):
+                    call_kwargs["existing_positions"] = sym_positions
+
+                signal = self.strategy.generate_signal(confirmed_candles, **call_kwargs)
+
+                if signal not in (SIGNAL_BUY, SIGNAL_SELL):
+                    self._last_bar_time[symbol] = confirmed_closed_bar.time
+                    continue
+
+            # Existing active positions on this symbol
             same_dir_pos = [p for p in sym_positions if p.type == signal]
             opposing_positions = [p for p in sym_positions if p.type != signal]
 
@@ -374,23 +438,6 @@ class BotEngine:
                     self._last_bar_time[symbol] = confirmed_closed_bar.time
                     continue
 
-                # Grid DCA Spacing Check (Layer berikutnya hanya dibuka jika jarak harga terpenuhi)
-                grid_pts = getattr(self.strategy, "grid_step_points", 0)
-                if grid_pts > 0:
-                    point = spec.point if spec.point > 0 else 0.01
-                    min_dist = grid_pts * point
-                    last_close = confirmed_closed_bar.close
-                    if signal == SIGNAL_BUY:
-                        lowest_buy = min(p.price_open for p in same_dir_pos)
-                        if last_close > (lowest_buy - min_dist):
-                            self._last_bar_time[symbol] = confirmed_closed_bar.time
-                            continue
-                    else:  # SIGNAL_SELL
-                        highest_sell = max(p.price_open for p in same_dir_pos)
-                        if last_close < (highest_sell + min_dist):
-                            self._last_bar_time[symbol] = confirmed_closed_bar.time
-                            continue
-
             # Rule 2: Reversal signal handling (close opposite direction if configured)
             if self.close_on_opposite_signal and opposing_positions:
                 for opp_pos in opposing_positions:
@@ -405,9 +452,10 @@ class BotEngine:
                 # Refresh positions after closing opposite
                 positions = await asyncio.to_thread(self.backend.positions)
 
-            # Check entry cooldown (minimum 10 seconds between trades on same symbol)
+            # Check entry cooldown (5s for DCA layer, 10s for new entry)
+            cooldown_sec = 5.0 if is_dca_layer else 10.0
             last_entry = self._last_entry_time.get(symbol, 0.0)
-            if now - last_entry < 10.0:
+            if now - last_entry < cooldown_sec:
                 self._last_bar_time[symbol] = confirmed_closed_bar.time
                 continue
 

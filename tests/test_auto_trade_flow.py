@@ -274,6 +274,9 @@ async def test_controller_start_stop_auto_trading(tmp_path):
     ctrl = TradeController(profile=prof)
     ctrl.backend = be
     await ctrl.connect()
+    ctrl.engine.risk_manager.daily_start_balance = 1000.0
+    ctrl.engine.risk_manager.high_water_mark_equity = 1000.0
+    ctrl.engine.risk_manager.circuit_breaker_tripped = False
 
     assert ctrl.engine.auto_trading_enabled is False
 
@@ -301,7 +304,7 @@ async def test_controller_manual_order_registers_virtual_protection(tmp_path):
         strategy="fast_gold_scalper",
         symbols=["XAUUSDm"],
     )
-    ctrl = TradeController(profile=prof)
+    ctrl = TradeController(profile=prof, state_store=store)
     ctrl.backend = be
     await ctrl.connect()
 

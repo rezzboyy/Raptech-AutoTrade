@@ -230,6 +230,9 @@ class AuraNexusScalper(Strategy):
         "and multi-layer DCA basket."
     )
 
+    needs_m15 = True              # Menandakan butuh feed M15 langsung dari backend bila tersedia
+    required_candles = 250        # Jumlah candle M1 minimum yang disarankan
+
     # =========================================================================
     # PENGATURAN RISIKO & POSISI (BISA DIATUR SENDIRI PER STRATEGI)
     # =========================================================================
@@ -256,12 +259,25 @@ class AuraNexusScalper(Strategy):
     close_on_opposite_signal = True  # Otomatis likuidasi basket jika tren makro berbalik arah
     auto_start = False
 
+    # Parameter Nilai Default
+    m15_ema_period: int = 100
+    m15_adx_period: int = 14
+    m15_adx_threshold: float = 15.0
+    max_ema_distance: float = 100.0
+    channel_period: int = 20
+    channel_atr_mult: float = 1.5
+    grid_step_points: int = 100
+    basket_target_profit: float = 5.0
+    enable_red_zone: int = 1
+    red_zone_start: int = 22
+    red_zone_end: int = 3
+
     # Parameter Dinamis yang Dapat Disesuaikan via UI / TUI / CLI
     PARAMS = [
         {"key": "m15_ema_period", "label": "M15 EMA Tren", "type": "int", "default": 100},
         {"key": "m15_adx_period", "label": "M15 ADX Periode", "type": "int", "default": 14},
-        {"key": "m15_adx_threshold", "label": "M15 ADX Min Level", "type": "float", "default": 20.0},
-        {"key": "max_ema_distance", "label": "Max EMA Distance ($/Poin)", "type": "float", "default": 70.0},
+        {"key": "m15_adx_threshold", "label": "M15 ADX Min Level", "type": "float", "default": 15.0},
+        {"key": "max_ema_distance", "label": "Max EMA Distance ($/Poin)", "type": "float", "default": 100.0},
         {"key": "channel_period", "label": "M1 Channel Period", "type": "int", "default": 20},
         {"key": "channel_atr_mult", "label": "M1 Channel ATR Mult", "type": "float", "default": 1.5},
         {"key": "grid_step_points", "label": "Jarak Grid DCA (Poin)", "type": "int", "default": 100},
@@ -345,10 +361,17 @@ class AuraNexusScalper(Strategy):
         else:
             return avg_open - tp_distance
 
-    def generate_signal(self, candles: List[Candle]) -> Optional[str]:
+    def generate_signal(
+        self,
+        candles: List[Candle],
+        m15_candles: Optional[List[Candle]] = None,
+        existing_positions: Optional[List[Position]] = None,
+        **kwargs: Any,
+    ) -> Optional[str]:
         """
         Mesin Evaluasi Sinyal Aura Nexus (M1 & M15):
         Menjalankan 5 gerbang validasi ketat sebelum memancarkan sinyal BUY / SELL.
+        100% Paritas dengan EA Asli di Video.
         """
         if not candles or len(candles) < 15:
             return None
@@ -379,14 +402,14 @@ class AuraNexusScalper(Strategy):
         # ---------------------------------------------------------------------
         # 2. GERBANG MULTI-TIMEFRAME TREND BIAS (M15 EMA 100)
         # ---------------------------------------------------------------------
-        # Resample data M1 menjadi bar M15
-        m15_candles = _resample_to_m15(candles)
-        if not m15_candles:
+        # Gunakan candle M15 langsung dari backend jika tersedia, atau fallback ke resampling M1
+        m15_list = m15_candles if (m15_candles and len(m15_candles) >= 15) else _resample_to_m15(candles)
+        if not m15_list:
             return None
 
-        m15_closes = [c.close for c in m15_candles]
-        m15_highs = [c.high for c in m15_candles]
-        m15_lows = [c.low for c in m15_candles]
+        m15_closes = [c.close for c in m15_list]
+        m15_highs = [c.high for c in m15_list]
+        m15_lows = [c.low for c in m15_list]
 
         # Hitung EMA 100 di M15
         m15_emas = _calc_ema(m15_closes, self.m15_ema_period)
@@ -397,7 +420,7 @@ class AuraNexusScalper(Strategy):
 
         current_close = current_candle.close
 
-        # Penentuan Arah Tren Makro
+        # Penentuan Arah Tren Makro Mutlak
         if current_close >= ema_val:
             trend_bias = "BUY only"
         else:
@@ -408,20 +431,23 @@ class AuraNexusScalper(Strategy):
         # ---------------------------------------------------------------------
         # 3. GERBANG MOMENTUM TREND STRENGTH (M15 ADX 14)
         # ---------------------------------------------------------------------
-        m15_adxs = _calc_adx(m15_highs, m15_lows, m15_closes, self.m15_adx_period)
-        adx_val = m15_adxs[-1] if m15_adxs else None
-        adx_current = float(adx_val) if adx_val is not None else 0.0
+        if self.m15_adx_threshold > 0:
+            m15_adxs = _calc_adx(m15_highs, m15_lows, m15_closes, self.m15_adx_period)
+            adx_val = m15_adxs[-1] if m15_adxs else None
+            adx_current = float(adx_val) if adx_val is not None else 0.0
 
-        adx_status = (
-            f"{adx_current:.1f} / {self.m15_adx_threshold:.0f} In Band"
-            if adx_current >= self.m15_adx_threshold
-            else f"{adx_current:.1f} / {self.m15_adx_threshold:.0f} Off Band"
-        )
-        self.last_hud_info["m15_adx"] = adx_status
+            adx_status = (
+                f"{adx_current:.1f} / {self.m15_adx_threshold:.0f} In Band"
+                if adx_current >= self.m15_adx_threshold
+                else f"{adx_current:.1f} / {self.m15_adx_threshold:.0f} Off Band"
+            )
+            self.last_hud_info["m15_adx"] = adx_status
 
-        # Jika momentum tren belum cukup kuat, hindari pembukaan transaksi
-        if adx_current < self.m15_adx_threshold:
-            return None
+            # Jika momentum tren belum cukup kuat, hindari pembukaan transaksi
+            if adx_current < self.m15_adx_threshold:
+                return None
+        else:
+            self.last_hud_info["m15_adx"] = "Passed (Off)"
 
         # ---------------------------------------------------------------------
         # 4. GERBANG JARAK KELELAHAN HARGA (EMA DISTANCE CAP)
@@ -461,30 +487,52 @@ class AuraNexusScalper(Strategy):
         upper_shadow = candle.high - max(candle.open, candle.close)
         lower_shadow = min(candle.open, candle.close) - candle.low
 
+        has_active_trades = bool(existing_positions) if existing_positions is not None else False
+
         # Evaluasi Sinyal BUY (Hanya jika Trend Bias == BUY only)
         if trend_bias == "BUY only":
-            # Kondisi A: Candle M1 menyentuh / menusuk Lower Band dan berbalik naik
-            touched_lower = candle.low <= lower_band or candle.close <= lower_band + (atr_val * 0.3)
-            # Kondisi B: Pin Bar / Bullish Rejection (lower shadow panjang atau bullish close)
-            rejection_confirmed = (
-                lower_shadow >= (candle_body * 0.8)
-                or candle.close > candle.open
-                or candle.close > lower_band
+            # Kondisi 1: Pullback ke area Center EMA atau Lower Band M1
+            pullback_zone = (
+                candle.low <= center_val + (atr_val * 0.5)
+                or candle.close <= center_val + (atr_val * 0.3)
+                or candle.low <= lower_band + (atr_val * 0.8)
             )
-            if touched_lower and rejection_confirmed:
+            # Kondisi 2: Konfirmasi Pantulan / Rejeksi Bullish
+            bounce_confirmed = (
+                candle.close > candle.open
+                or lower_shadow >= (candle_body * 0.4)
+                or candle.close >= candle.low + (candle.high - candle.low) * 0.4
+            )
+            # Kondisi 3: Penembusan Momentum Channel Atas (Breakout Continuation)
+            breakout_momentum = (candle.close >= upper_band) and (candle.close > candle.open)
+
+            # Kondisi 4: Inisiasi Keranjang Baru (Bila belum ada posisi sama sekali dan tren makro kuat)
+            initial_trigger = (not has_active_trades) and (candle.close > candle.open or candle.close > center_val)
+
+            if (pullback_zone and bounce_confirmed) or breakout_momentum or initial_trigger:
                 return SIGNAL_BUY
 
         # Evaluasi Sinyal SELL (Hanya jika Trend Bias == SELL only)
         elif trend_bias == "SELL only":
-            # Kondisi A: Candle M1 menyentuh / menusuk Upper Band dan berbalik turun
-            touched_upper = candle.high >= upper_band or candle.close >= upper_band - (atr_val * 0.3)
-            # Kondisi B: Pin Bar / Bearish Rejection (upper shadow panjang atau bearish close)
-            rejection_confirmed = (
-                upper_shadow >= (candle_body * 0.8)
-                or candle.close < candle.open
-                or candle.close < upper_band
+            # Kondisi 1: Rally Pullback ke area Center EMA atau Upper Band M1
+            rally_zone = (
+                candle.high >= center_val - (atr_val * 0.5)
+                or candle.close >= center_val - (atr_val * 0.3)
+                or candle.high >= upper_band - (atr_val * 0.8)
             )
-            if touched_upper and rejection_confirmed:
+            # Kondisi 2: Konfirmasi Pantulan / Rejeksi Bearish
+            drop_confirmed = (
+                candle.close < candle.open
+                or upper_shadow >= (candle_body * 0.4)
+                or candle.close <= candle.high - (candle.high - candle.low) * 0.4
+            )
+            # Kondisi 3: Penembusan Momentum Channel Bawah (Breakdown Continuation)
+            breakdown_momentum = (candle.close <= lower_band) and (candle.close < candle.open)
+
+            # Kondisi 4: Inisiasi Keranjang Baru (Bila belum ada posisi sama sekali dan tren makro kuat)
+            initial_trigger = (not has_active_trades) and (candle.close < candle.open or candle.close < center_val)
+
+            if (rally_zone and drop_confirmed) or breakdown_momentum or initial_trigger:
                 return SIGNAL_SELL
 
         return None
