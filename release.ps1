@@ -120,9 +120,9 @@ $Notes
 ---
 ### 📦 Berkas Distribusi Produksi:
 - **Standalone Binary**: `RaptechAutoTrade.exe` ($exeSizeMb MB)
-  - SHA-256: `$exeHash`
+  - SHA-256: $exeHash
 - **Customer Release Pack**: `Raptech_AutoTrade_v$targetVersion.zip` ($zipSizeMb MB)
-  - SHA-256: `$zipHash`
+  - SHA-256: $zipHash
 
 ---
 ### 🔄 Cara Pembaruan Otomatis (OTA):
