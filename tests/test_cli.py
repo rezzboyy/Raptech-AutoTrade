@@ -89,3 +89,29 @@ def test_cli_market_commands(tmp_path, monkeypatch):
     assert res.exit_code == 0
     assert "Daftar simbol berhasil diperbarui" in res.output
 
+
+def test_cli_update_check(monkeypatch):
+    from core.updater import UpdateInfo
+    # Test case 1: Already up to date
+    monkeypatch.setattr("core.updater.check_for_update", lambda timeout=8.0: None)
+    res = runner.invoke(app, ["update", "--check"])
+    assert res.exit_code == 0
+    assert "sudah menggunakan versi terbaru" in res.output
+
+    # Test case 2: Update available
+    mock_info = UpdateInfo(
+        tag_name="v3.2.0",
+        version="3.2.0",
+        title="Raptech AutoTrade v3.2.0",
+        changelog="New features",
+        published_at="2026-11-16",
+        exe_download_url="https://example.com/RaptechAutoTrade.exe",
+        exe_size_bytes=45000000,
+    )
+    monkeypatch.setattr("core.updater.check_for_update", lambda timeout=8.0: mock_info)
+    res = runner.invoke(app, ["update", "--check"])
+    assert res.exit_code == 0
+    assert "Pembaruan Tersedia" in res.output
+    assert "v3.2.0" in res.output
+
+

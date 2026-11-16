@@ -21,6 +21,7 @@ from core.logger import get_logger
 from core.order_manager import OrderManager
 from core.risk_manager import RiskManager
 from core.state_store import StateStore
+from core.version import __version__
 from strategies import SIGNAL_BUY, SIGNAL_SELL, Strategy, get_registry
 
 logger = get_logger("bot_engine")
@@ -189,7 +190,7 @@ class BotEngine:
         """Main async bot loop."""
         self._running = True
         self.log(
-            f"Bot Engine v3.1.0 dimulai. Monitoring: {', '.join(self.current_symbols)} ({self.current_timeframe})"
+            f"Bot Engine v{__version__} dimulai. Monitoring: {', '.join(self.current_symbols)} ({self.current_timeframe})"
         )
 
         # Initial startup broker reconciliation
@@ -214,12 +215,79 @@ class BotEngine:
 
         self.log("Bot Engine loop selesai.")
 
+    def _sync_basket_protections(
+        self, positions: List[Position]
+    ) -> List[Tuple[Position, str]]:
+        """Synchronize Shared Basket TP across multi-layer DCA positions and evaluate basket profit."""
+        basket_actions: List[Tuple[Position, str]] = []
+        if not hasattr(self.strategy, "calculate_basket_tp") and not hasattr(
+            self.strategy, "basket_target_profit"
+        ):
+            return basket_actions
+
+        baskets: Dict[Tuple[str, str], List[Position]] = {}
+        for p in positions:
+            key = (p.symbol, p.type.upper())
+            baskets.setdefault(key, []).append(p)
+
+        for (sym, side), b_positions in baskets.items():
+            if not b_positions:
+                continue
+
+            # 1. Basket Target Profit Check (Total Floating USD across all layers)
+            target_usd = getattr(self.strategy, "basket_target_profit", 0.0)
+            if target_usd > 0.0 and len(b_positions) > 0:
+                tot_pnl = sum(p.profit for p in b_positions)
+                if tot_pnl >= target_usd:
+                    for p in b_positions:
+                        basket_actions.append(
+                            (
+                                p,
+                                f"Basket Target Profit Hit (+${tot_pnl:,.2f} >= +${target_usd:,.2f})",
+                            )
+                        )
+                    continue
+
+            # 2. Shared Basket Take Profit Price Sync
+            if len(b_positions) > 1 and hasattr(self.strategy, "calculate_basket_tp"):
+                spec = self.backend.symbol_spec(sym)
+                pt = spec.point if spec else 0.01
+                shared_tp = self.strategy.calculate_basket_tp(
+                    b_positions, symbol_point=pt
+                )
+                digits = spec.digits if spec else 5
+                shared_tp = round(shared_tp, digits)
+                for p in b_positions:
+                    if p.ticket in self.risk_manager.virtual_states:
+                        self.risk_manager.virtual_states[p.ticket].virtual_tp = shared_tp
+
+        return basket_actions
+
     async def tick_step(self) -> None:
         """Single tick step execution."""
         # 1. Fetch current broker positions
         positions = await asyncio.to_thread(self.backend.positions)
 
-        # 2. Virtual SL/TP & Trailing Stop Protections (Always active for capital safety)
+        # Update intrabar tick telemetry for strategy HUD
+        for sym in self.current_symbols:
+            t = await asyncio.to_thread(self.backend.get_tick, sym)
+            if t and hasattr(self.strategy, "update_tick_telemetry"):
+                ref_p = (t.bid + t.ask) / 2.0
+                self.strategy.update_tick_telemetry(ref_p, t.time)
+
+        # 2. Shared Basket DCA & Take Profit Protection
+        basket_actions = self._sync_basket_protections(positions)
+        for pos, reason in basket_actions:
+            self.log(f"BASKET TP: Menutup #{pos.ticket} {pos.symbol} - Alasan: {reason}")
+            await asyncio.to_thread(
+                self.order_manager.close_position, pos.ticket, pos.symbol
+            )
+            self.risk_manager.unregister_position(pos.ticket)
+
+        if basket_actions:
+            positions = await asyncio.to_thread(self.backend.positions)
+
+        # 3. Virtual SL/TP & Trailing Stop Protections (Always active for capital safety)
         actions = self.risk_manager.evaluate_virtual_protections(positions)
         for pos, reason in actions:
             self.log(f"PROTEKSI: Menutup #{pos.ticket} {pos.symbol} - Alasan: {reason}")
@@ -287,13 +355,41 @@ class BotEngine:
 
             # Existing active positions on this symbol
             sym_positions = [p for p in positions if p.symbol == symbol]
-            has_same_direction = any(p.type == signal for p in sym_positions)
+            same_dir_pos = [p for p in sym_positions if p.type == signal]
             opposing_positions = [p for p in sym_positions if p.type != signal]
 
             # Rule 1: Prevent duplicate stacking in same direction (single active trade discipline per strategy)
-            if not self.allow_hedging and has_same_direction:
+            if not self.allow_hedging and same_dir_pos:
                 self._last_bar_time[symbol] = confirmed_closed_bar.time
                 continue
+
+            # Rule 1b: If hedging/DCA is enabled, validate max positions & minimum grid step spacing
+            if self.allow_hedging and same_dir_pos:
+                max_pos = getattr(
+                    self.strategy,
+                    "max_open_positions",
+                    getattr(self.profile.risk, "max_open_positions", 3),
+                )
+                if len(same_dir_pos) >= max_pos:
+                    self._last_bar_time[symbol] = confirmed_closed_bar.time
+                    continue
+
+                # Grid DCA Spacing Check (Layer berikutnya hanya dibuka jika jarak harga terpenuhi)
+                grid_pts = getattr(self.strategy, "grid_step_points", 0)
+                if grid_pts > 0:
+                    point = spec.point if spec.point > 0 else 0.01
+                    min_dist = grid_pts * point
+                    last_close = confirmed_closed_bar.close
+                    if signal == SIGNAL_BUY:
+                        lowest_buy = min(p.price_open for p in same_dir_pos)
+                        if last_close > (lowest_buy - min_dist):
+                            self._last_bar_time[symbol] = confirmed_closed_bar.time
+                            continue
+                    else:  # SIGNAL_SELL
+                        highest_sell = max(p.price_open for p in same_dir_pos)
+                        if last_close < (highest_sell + min_dist):
+                            self._last_bar_time[symbol] = confirmed_closed_bar.time
+                            continue
 
             # Rule 2: Reversal signal handling (close opposite direction if configured)
             if self.close_on_opposite_signal and opposing_positions:
@@ -414,6 +510,7 @@ class BotEngine:
 
                 # Refresh positions list for subsequent symbols in this loop
                 positions = await asyncio.to_thread(self.backend.positions)
+                self._sync_basket_protections(positions)
             else:
                 self.log(f"❌ Order {signal} {symbol} Gagal: {res.message}")
 

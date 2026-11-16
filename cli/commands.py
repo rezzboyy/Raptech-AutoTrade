@@ -428,12 +428,31 @@ def backtest(
                 )
             )
 
+    # Sinkronisasi pengaturan risiko dengan strategi terpilih
+    effective_risk = prof.risk
+    if hasattr(strat, "get_risk_settings"):
+        strat_risk = strat.get_risk_settings()
+        if strat_risk:
+            for attr in (
+                "virtual_sl_points",
+                "virtual_tp_points",
+                "trailing_enabled",
+                "trail_start_points",
+                "trail_step_points",
+                "fixed_lot",
+                "sizing_mode",
+            ):
+                if hasattr(strat_risk, attr):
+                    val = getattr(strat_risk, attr)
+                    if val is not None:
+                        setattr(effective_risk, attr, val)
+
     bt = Backtester(
         strategy=strat,
         initial_balance=balance,
         spread_points=spread,
         slippage_points=slippage,
-        risk_settings=prof.risk,
+        risk_settings=effective_risk,
     )
     res = bt.run(candles, symbol=symbol)
 
@@ -796,4 +815,73 @@ def market(
     console.print("  [white]python main.py market --add ETHUSDm[/white]")
     console.print("  [white]python main.py market --remove SOLUSDm[/white]")
     console.print("  [white]python main.py market --search GOLD[/white]")
+
+
+@app.command("update")
+def update_cmd(
+    check_only: bool = typer.Option(False, "--check", "-c", help="Hanya periksa ada tidaknya rilis baru"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Otomatis konfirmasi unduh dan terapkan pembaruan"),
+) -> None:
+    """Periksa dan perbarui aplikasi Raptech AutoTrade ke versi rilis terbaru dari GitHub."""
+    from rich.prompt import Confirm
+    from rich.progress import Progress, BarColumn, TextColumn, DownloadColumn, TransferSpeedColumn
+    from core.updater import check_for_update, download_file_with_progress, apply_windows_update
+    from core.version import __version__, GITHUB_REPO_FULL
+
+    console.print(f"[bold cyan]Memeriksa rilis terbaru dari GitHub ([white]{GITHUB_REPO_FULL}[/white])...[/bold cyan]")
+    console.print(f"[dim]Versi saat ini: v{__version__}[/dim]\n")
+
+    info = check_for_update()
+    if not info:
+        console.print(f"[bold green]✔ Aplikasi Anda sudah menggunakan versi terbaru (v{__version__})![/bold green]")
+        return
+
+    console.print(f"[bold yellow]★ Pembaruan Tersedia: [bold white]{info.title} ({info.tag_name})[/bold white][/bold yellow]")
+    console.print(f"[dim]Tanggal Rilis: {info.published_at}[/dim]")
+    if info.exe_size_mb > 0:
+        console.print(f"[dim]Ukuran Biner: {info.exe_size_mb} MB[/dim]")
+    console.print(f"\n[bold]Catatan Rilis (Changelog):[/bold]\n{info.changelog}\n")
+
+    if check_only:
+        return
+
+    if not info.exe_download_url:
+        console.print("[yellow]Biner executable tidak ditemukan dalam aset rilis GitHub.[/yellow]")
+        if info.zip_download_url:
+            console.print(f"Silakan unduh paket ZIP manual di: {info.zip_download_url}")
+        return
+
+    if not yes:
+        proceed = Confirm.ask("Unduh dan terapkan pembaruan sekarang?", default=True)
+        if not proceed:
+            console.print("[dim]Pembaruan dibatalkan.[/dim]")
+            return
+
+    console.print("\n[cyan]Mengunduh versi terbaru...[/cyan]")
+    new_exe = Path("RaptechAutoTrade_update.exe")
+
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        DownloadColumn(),
+        TransferSpeedColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("[green]Downloading update...", total=info.exe_size_bytes or 45000000)
+
+        def _cb(downloaded: int, total: int):
+            if total > 0:
+                progress.update(task, completed=downloaded, total=total)
+            else:
+                progress.update(task, completed=downloaded)
+
+        ok = download_file_with_progress(info.exe_download_url, new_exe, progress_callback=_cb)
+
+    if not ok or not new_exe.exists():
+        console.print("[bold red]Gagal mengunduh pembaruan. Silakan periksa koneksi internet.[/bold red]")
+        return
+
+    console.print("\n[bold green]✔ Unduhan selesai! Menerapkan pembaruan in-place dan me-restart bot...[/bold green]")
+    apply_windows_update(new_exe, target_binary_name="RaptechAutoTrade.exe", restart=True)
+
 

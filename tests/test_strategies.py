@@ -53,6 +53,7 @@ def test_strategy_registry():
     assert "brutal_cent_scalper" in reg
     assert "ma_cross" in reg
     assert "rsi_reversal" in reg
+    assert "aura_nexus" in reg
 
 
 def test_ma_cross_signal_generation():

@@ -319,7 +319,11 @@ class RiskManager:
         # to prevent instant stop-out on execution fill!
         if spread_pts is None and hasattr(self.backend, "spread_points"):
             try:
-                spread_pts = self.backend.spread_points(symbol)
+                sp_val = self.backend.spread_points(symbol)
+                if isinstance(sp_val, (int, float)):
+                    spread_pts = float(sp_val)
+                else:
+                    spread_pts = None
             except Exception:
                 spread_pts = None
 

@@ -28,3 +28,10 @@ dist_customer/
 release/
 *.zip
 *.spec
+
+# Media & Large Reference Assets
+*.mp4
+*.mkv
+*.avi
+*.mov
+*.wav

@@ -16,6 +16,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
+from core.version import __version__
+
 DIST_DIR = BASE_DIR / "release"
 BUILD_DIR = BASE_DIR / "build"
 MAIN_FILE = BASE_DIR / "main.py"
@@ -43,7 +45,7 @@ def ensure_icon() -> None:
 
 def build_slim_executable() -> None:
     print("=" * 60)
-    print(" Raptech AutoTrade v3.1.0 — PyInstaller Slim Production Build")
+    print(f" Raptech AutoTrade v{__version__} — PyInstaller Slim Production Build")
     print("=" * 60)
 
     ensure_icon()
@@ -85,6 +87,8 @@ def build_slim_executable() -> None:
         "--hidden-import", "core.secure_store",
         "--hidden-import", "core.config_store",
         "--hidden-import", "core.market_analyzer",
+        "--hidden-import", "core.version",
+        "--hidden-import", "core.updater",
         "--hidden-import", "backend",
         "--hidden-import", "backend.native_backend",
         "--hidden-import", "backend.mcp_backend",
@@ -97,6 +101,7 @@ def build_slim_executable() -> None:
         "--hidden-import", "strategies.pa_breakout",
         "--hidden-import", "strategies.pa_rejection",
         "--hidden-import", "strategies.pa_hybrid",
+        "--hidden-import", "strategies.aura_nexus",
         "--hidden-import", "tui",
         "--hidden-import", "tui.light_app",
         str(MAIN_FILE),

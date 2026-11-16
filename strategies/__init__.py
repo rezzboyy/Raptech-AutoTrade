@@ -211,6 +211,7 @@ from strategies.rsi_reversal import RSIReversal
 from strategies.pa_breakout import PABreakoutScalper
 from strategies.pa_rejection import PARejectionScalper
 from strategies.pa_hybrid import PAHybridScalper
+from strategies.aura_nexus import AuraNexusScalper
 
 __all__ = [
     "Strategy",
@@ -230,4 +231,5 @@ __all__ = [
     "PABreakoutScalper",
     "PARejectionScalper",
     "PAHybridScalper",
+    "AuraNexusScalper",
 ]

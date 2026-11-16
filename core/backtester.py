@@ -74,7 +74,12 @@ class Backtester:
         self.spread_points = spread_points
         self.slippage_points = slippage_points
         self.commission_per_lot = commission_per_lot
-        self.risk_settings = risk_settings or RiskSettings()
+        if risk_settings is not None:
+            self.risk_settings = risk_settings
+        elif hasattr(strategy, "get_risk_settings"):
+            self.risk_settings = strategy.get_risk_settings()
+        else:
+            self.risk_settings = RiskSettings()
         self.spec = spec or SymbolSpec(
             symbol="XAUUSDm",
             digits=3,

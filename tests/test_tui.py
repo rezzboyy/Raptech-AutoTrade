@@ -229,4 +229,23 @@ async def test_light_app_interactive_close_single(monkeypatch):
     mock_live.start.assert_called_once()
 
 
+def test_light_app_render_live_view_aura_nexus_hud():
+    from unittest.mock import MagicMock
+    from strategies.aura_nexus import AuraNexusScalper
+
+    app = LightAutotradeApp(profile_name="default_example", screen=False)
+    app.controller.is_connected = True
+    app.controller.engine = MagicMock()
+    app.controller.engine.strategy = AuraNexusScalper()
+    app.controller.engine.risk_manager.daily_start_balance = 1000.0
+    app.controller.engine.risk_manager.circuit_breaker_tripped = False
+
+    group = app.render_live_view()
+    assert group is not None
+    # Verifikasi group dapat dirender tanpa error
+    lines = list(app.console.render_lines(group, app.console.options))
+    assert len(lines) > 0
+
+
+
 

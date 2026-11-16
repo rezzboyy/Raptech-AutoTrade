@@ -31,6 +31,7 @@ from core.secure_store import mask_token
 from core.controller import TradeController
 from core.logger import get_logger, mute_console_logging, unmute_console_logging
 from core.market_analyzer import MarketAnalyzer, MarketRecommendation
+from core.version import __version__
 from strategies import get_registry
 
 logger = get_logger("light_tui")
@@ -328,7 +329,7 @@ class LightAutotradeApp:
         else:
             title_text = Text.from_markup(
                 f"[bold black on bright_cyan] RAPTECH [/bold black on bright_cyan] "
-                f"[bold cyan]AUTOTRADE v3.1.0[/bold cyan]  "
+                f"[bold cyan]AUTOTRADE v{__version__}[/bold cyan]  "
                 f"[bold white on #1e293b] [PROFIL: {self.profile.profile_name}] [/bold white on #1e293b]  "
                 f"{env_badge} {b_badge}  {view_badge}"
             )
@@ -862,6 +863,7 @@ class LightAutotradeApp:
                     "[bold white on #455a64] V [/bold white on #455a64] [white]Lihat Radar Pasar[/white]    "
                     "[bold black on #ea80fc] R [/bold black on #ea80fc] [bold magenta]Risiko[/bold magenta]    "
                     "[bold black on #82b1ff] E [/bold black on #82b1ff] [bold blue]Strategi[/bold blue]    "
+                    "[bold black on #ffd600] U [/bold black on #ffd600] [bold yellow]Update[/bold yellow]    "
                     "[bold black on #cfd8dc] H [/bold black on #cfd8dc] [white]Bantuan[/white]    "
                     "[bold white on #37474f] Q [/bold white on #37474f] [dim white]Keluar[/dim white]"
                 )
@@ -881,7 +883,7 @@ class LightAutotradeApp:
                     "[bold black on #82b1ff] E [/bold black on #82b1ff] [bold blue]Strategi[/bold blue]   "
                     "[bold black on #ffab00] T [/bold black on #ffab00] [bold yellow]Mode[/bold yellow]   "
                     "[bold black on #ffd740] P [/bold black on #ffd740] [bold yellow]Profil[/bold yellow]   "
-                    "[bold black on #26c6da] A [/bold black on #26c6da] [bold cyan]Scan[/bold cyan]   "
+                    "[bold black on #ffd600] U [/bold black on #ffd600] [bold yellow]Upd[/bold yellow]   "
                     "[bold white on #37474f] Q [/bold white on #37474f] [dim white]Keluar[/dim white]"
                 )
                 controls = Text.from_markup(f"{c1}\n{c2}")
@@ -902,6 +904,7 @@ class LightAutotradeApp:
                 c3 = (
                     "[dim][SYSTEM] [/dim]  [bold white on #00695c] V [/bold white on #00695c] [bold cyan]Live Dashboard[/bold cyan]   "
                     "[bold black on #26c6da] A [/bold black on #26c6da] [bold cyan]Scan Pasar[/bold cyan]   "
+                    "[bold black on #ffd600] U [/bold black on #ffd600] [bold yellow]Update OTA[/bold yellow]   "
                     "[bold black on #cfd8dc] H [/bold black on #cfd8dc] [white]Bantuan & Panduan[/white]   "
                     "[bold white on #37474f] Q [/bold white on #37474f] [dim white]Keluar Aplikasi[/dim white]"
                 )
@@ -911,7 +914,11 @@ class LightAutotradeApp:
 
     def render_overview_view(self) -> Group:
         """Assemble VIEW 1: Main Overview & Market Intelligence Cockpit."""
-        acc = self.controller.backend.account_info() if self.controller.is_connected else None
+        acc = (
+            self.controller.backend.account_info()
+            if (self.controller.is_connected and self.controller.backend)
+            else None
+        )
         telemetry = self.controller.get_telemetry()
 
         header = self.render_header(acc, telemetry)
@@ -939,9 +946,17 @@ class LightAutotradeApp:
 
     def render_live_view(self) -> Group:
         """Assemble VIEW 2: Clean Live Trading Execution Dashboard."""
-        acc = self.controller.backend.account_info() if self.controller.is_connected else None
+        acc = (
+            self.controller.backend.account_info()
+            if (self.controller.is_connected and self.controller.backend)
+            else None
+        )
         telemetry = self.controller.get_telemetry()
-        positions = self.controller.backend.positions() if self.controller.is_connected else []
+        positions = (
+            self.controller.backend.positions()
+            if (self.controller.is_connected and self.controller.backend)
+            else []
+        )
 
         header = self.render_header(acc, telemetry)
 
@@ -1007,6 +1022,33 @@ class LightAutotradeApp:
             f"[{dd_color}][{dd_bar}][/{dd_color}] [yellow]{dd_pct:.0f}%[/yellow]"
         )
         live_stats_grid.add_row(row2_left, row2_right)
+
+        # Telemetry HUD khusus strategi (misal Aura Nexus)
+        if self.controller.engine and hasattr(self.controller.engine.strategy, "get_hud_info"):
+            try:
+                hud = self.controller.engine.strategy.get_hud_info()
+            except Exception:
+                hud = None
+            if hud:
+                ea_name = hud.get("ea_name", "EA TELEMETRY")
+                bias = hud.get("trend_bias", "N/A")
+                bias_col = "bold green" if "BUY" in bias else ("bold red" if "SELL" in bias else "bold yellow")
+                adx = hud.get("m15_adx", "N/A")
+                adx_col = "bold green" if "In Band" in adx else "dim yellow"
+                ema_dist = hud.get("ema_distance", "N/A")
+                rz = hud.get("red_zone", "N/A")
+                rz_col = "bold red" if "BLOCKED" in rz else "bold green"
+
+                row3_left = Text.from_markup(
+                    f"[bold cyan]◈ {ea_name} HUD:[/bold cyan] "
+                    f"[dim]Trend Bias:[/dim] [{bias_col}]{bias}[/{bias_col}]   "
+                    f"[dim]M15 ADX:[/dim] [{adx_col}]{adx}[/{adx_col}]   "
+                    f"[dim]EMA Dist:[/dim] [white]{ema_dist}[/white]"
+                )
+                row3_right = Text.from_markup(
+                    f"[dim]Red Zone:[/dim] [{rz_col}]{rz}[/{rz_col}]"
+                )
+                live_stats_grid.add_row(row3_left, row3_right)
 
         live_hud_panel = Panel(live_stats_grid, box=box.ROUNDED, style="cyan")
         pos_table = self.render_positions_table(positions)
@@ -1668,6 +1710,79 @@ class LightAutotradeApp:
         with self._modal_session(live):
             await self._menu_change_mode()
 
+    async def interactive_update_menu(self, live: Live) -> None:
+        """Pause Live UI to check for GitHub updates and apply in-place via hotkey [U]."""
+        from rich.prompt import Confirm
+        from rich.progress import Progress, BarColumn, TextColumn, DownloadColumn, TransferSpeedColumn
+        from core.updater import check_for_update, download_file_with_progress, apply_windows_update
+        from core.version import GITHUB_REPO_FULL
+
+        with self._modal_session(live):
+            self.console.clear()
+            self.console.print("[bold cyan]══════════════ PEMBARUAN OTOMATIS (OTA UPDATE) ══════════════[/bold cyan]\n")
+            self.console.print(f"[dim]Versi Aktif Saat Ini :[/dim] [bold yellow]v{__version__}[/bold yellow]")
+            self.console.print(f"[dim]Repositori GitHub    :[/dim] [white]{GITHUB_REPO_FULL}[/white]\n")
+
+            self.console.print("[cyan]Memeriksa rilis terbaru dari GitHub...[/cyan]")
+            info = await asyncio.to_thread(check_for_update)
+
+            if not info:
+                self.console.print(f"\n[bold green]✔ Aplikasi Anda sudah menggunakan versi paling mutakhir (v{__version__})![/bold green]")
+                self.console.print("[dim]Tidak ada pembaruan baru yang diperlukan saat ini.[/dim]\n")
+                Prompt.ask("Tekan [bold white]Enter[/bold white] untuk kembali ke dashboard", default="")
+                return
+
+            self.console.print(f"\n[bold yellow]★ RILIS TERBARU DITEMUKAN: [bold white]{info.title} ({info.tag_name})[/bold white][/bold yellow]")
+            self.console.print(f"[dim]Tanggal Publikasi : {info.published_at}[/dim]")
+            if info.exe_size_mb > 0:
+                self.console.print(f"[dim]Ukuran Unduhan    : {info.exe_size_mb} MB[/dim]")
+            self.console.print(f"\n[bold]Catatan Pembaruan (Changelog):[/bold]\n{info.changelog}\n")
+
+            if not info.exe_download_url:
+                self.console.print("[yellow]Biner executable tidak tersedia di rilis GitHub ini.[/yellow]")
+                Prompt.ask("Tekan Enter untuk kembali", default="")
+                return
+
+            proceed = Confirm.ask("Unduh dan perbarui bot sekarang secara otomatis?", default=True)
+            if not proceed:
+                self.console.print("[dim]Pembaruan ditunda.[/dim]")
+                await asyncio.sleep(1.0)
+                return
+
+            self.console.print("\n[cyan]Mengunduh file pembaruan...[/cyan]")
+            new_exe = Path("RaptechAutoTrade_update.exe")
+
+            with Progress(
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                DownloadColumn(),
+                TransferSpeedColumn(),
+                console=self.console,
+            ) as progress:
+                task = progress.add_task("[green]Mengunduh update...", total=info.exe_size_bytes or 45000000)
+
+                def _cb(downloaded: int, total: int):
+                    if total > 0:
+                        progress.update(task, completed=downloaded, total=total)
+                    else:
+                        progress.update(task, completed=downloaded)
+
+                ok = await asyncio.to_thread(
+                    download_file_with_progress,
+                    info.exe_download_url,
+                    new_exe,
+                    progress_callback=_cb,
+                )
+
+            if not ok or not new_exe.exists():
+                self.console.print("[bold red]Gagal mengunduh pembaruan. Silakan periksa koneksi internet Anda.[/bold red]")
+                await asyncio.sleep(2.0)
+                return
+
+            self.console.print("\n[bold green]✔ Pembaruan berhasil diunduh! Menjalankan restart in-place...[/bold green]")
+            await asyncio.sleep(1.2)
+            apply_windows_update(new_exe, target_binary_name="RaptechAutoTrade.exe", restart=True)
+
     async def _menu_change_mode(self) -> None:
         """Interactive modal menu for switching Real, Demo, and Simulation modes."""
         self.console.clear()
@@ -1993,6 +2108,9 @@ class LightAutotradeApp:
                             self._dirty = True
                         elif key == "p":
                             await self.interactive_connection_menu(live)
+                            self._dirty = True
+                        elif key == "u":
+                            await self.interactive_update_menu(live)
                             self._dirty = True
                         elif key in ("h", "?"):
                             await self.interactive_help_menu(live)

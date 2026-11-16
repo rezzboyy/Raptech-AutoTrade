@@ -14,24 +14,29 @@ import json
 import os
 from pathlib import Path
 import shutil
+import sys
 import zipfile
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+from core.version import __version__
 DIST_DIR = BASE_DIR / "release"
 EXE_PATH = DIST_DIR / "RaptechAutoTrade.exe"
 if not EXE_PATH.exists() and (DIST_DIR / "RaptechAutoTradeCLI.exe").exists():
     EXE_PATH = DIST_DIR / "RaptechAutoTradeCLI.exe"
 
-STAGING_DIR = BASE_DIR / "dist_customer" / "Raptech_AutoTrade_v3.1.0"
-ZIP_OUTPUT = DIST_DIR / "Raptech_AutoTrade_v3.1.0.zip"
+STAGING_DIR = BASE_DIR / "dist_customer" / f"Raptech_AutoTrade_v{__version__}"
+ZIP_OUTPUT = DIST_DIR / f"Raptech_AutoTrade_v{__version__}.zip"
 
 
-PENGGUNAAN_TXT_CONTENT = """================================================================================
-             RAPTECH AUTOTRADE v3.1.0 — PANDUAN PENGGUNAAN RESMI
+PENGGUNAAN_TXT_CONTENT = f"""================================================================================
+             RAPTECH AUTOTRADE v{__version__} — PANDUAN PENGGUNAAN RESMI
                       Algorithmic Trading & Capital Safeguards
 ================================================================================
 
-Selamat datang di Raptech AutoTrade v3.1.0!
+Selamat datang di Raptech AutoTrade v{__version__}!
 Software bot trading otomatis MetaTrader 5 (MT5) dengan arsitektur Dual-View,
 Zero-Flicker (bebas kedip), pemindai kondisi pasar otomatis (Market Scanner),
 serta proteksi modal berlapis (Virtual Stop Loss, Trailing Stop, Daily Drawdown).
@@ -346,7 +351,8 @@ def build_minimal_customer_pack():
             "recommended_strategies": [
                 "fast_gold_scalper",
                 "pa_hybrid",
-                "pa_breakout"
+                "pa_breakout",
+                "aura_nexus"
             ],
             "default_risk": {
                 "fixed_lot": 0.01,

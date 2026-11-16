@@ -87,3 +87,14 @@ def test_backtester_zero_trades_empty_safety():
     assert res.total_trades == 0
     assert res.net_profit == 0.0
     assert res.profit_factor == 0.0
+
+
+def test_backtester_aura_nexus_auto_risk():
+    from strategies.aura_nexus import AuraNexusScalper
+    strat = AuraNexusScalper()
+    bt = Backtester(strategy=strat)
+    # Verifikasi risk_settings otomatis mengambil parameter bawaan Aura Nexus
+    assert bt.risk_settings.virtual_sl_points == 500
+    assert bt.risk_settings.virtual_tp_points == 100
+    assert bt.risk_settings.fixed_lot == 0.01
+    assert bt.risk_settings.trailing_enabled is False

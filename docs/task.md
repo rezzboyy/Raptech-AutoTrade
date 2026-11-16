@@ -354,3 +354,78 @@ Dokumen ini memuat rencana kerja, tahapan pengembangan, dan daftar tugas (checkl
 - [x] **15.4 Penamaan & Packaging Distribusi Versi 3.1.0**:
   - [x] Pembaruan penamaan executable mandiri menjadi `RaptechAutoTrade.exe` (tanpa kata "CLI").
   - [x] Target ZIP rilis bersih di `release/Raptech_AutoTrade_v3.1.0.zip` (42.7 MB) dengan panduan resmi `penggunaan.txt` dan batch file `1_Mulai_Raptech_AutoTrade.bat`.
+
+---
+
+### Phase 16: Aura Nexus (Enhanced) v1.20 Strategy Replica & Shared Basket DCA
+- [x] **16.1 Analisis Forensik Video & Ekstraksi Parameter Visual (`strategi.mp4`)**:
+  - [x] Ekstraksi frame & dekonstruksi HUD on-chart: `Aura Nexus (Enhanced) v1.20` pada XAUUSDm M1 (M15 Macro Filter).
+  - [x] Identifikasi parameter filter: `M15 EMA 100` (Direction Lock: BUY only / SELL only), `M15 ADX 14` (Momentum Gate >= 20.0), `EMA Distance` (Deviation Cap <= 70.0), dan `Red Zone` (Rollover Window: 22:00-03:00).
+  - [x] Identifikasi logika eksekusi: Dynamic Channel / Rejection Bounce pada M1, Flat DCA Grid 0.01 lot per layer (spacing ~1.00 USD / 100 poin), serta Shared Take Profit per basket.
+- [x] **16.2 Implementasi Strategi Mandiri 100% (`strategies/aura_nexus.py`)**:
+  - [x] Bangun modul mandiri tanpa dependensi eksternal: rumus murni `_calc_ema`, `_calc_atr`, `_calc_adx`, `_resample_to_m15`, dan `_is_in_red_zone`.
+  - [x] Implementasikan kelas `@register AuraNexusScalper(Strategy)` dengan parameter risiko mandiri (`max_daily_loss = 100.0`, `max_open_positions = 16`, `fixed_lot = 0.01`, `allow_hedging = True`).
+  - [x] Integrasikan kalkulator basket `calculate_basket_tp()` dan telemetry HUD `get_hud_info()` persis dengan display MT5 asli.
+- [x] **16.3 Integrasi Registry & Build Spec (`strategies/__init__.py` & `scripts/build.py`)**:
+  - [x] Ekspor `AuraNexusScalper` ke `__all__` dan daftarkan ke registry otomatis.
+  - [x] Tambahkan hidden import `strategies.aura_nexus` pada `scripts/build.py` dan `RaptechAutoTrade.spec`.
+- [x] **16.4 Audit & Pengujian Test Suite (`tests/test_aura_nexus.py`)**:
+  - [x] Pengujian unit komprehensif (6 unit test) memverifikasi kalkulasi ADX, EMA, ATR, resampling M1->M15, filter Red Zone, Shared Basket TP, dan sinyal BUY.
+  - [x] Seluruh test suite lolos 100% (105/105 passed).
+- [x] **16.5 Kompilasi Biner Executable & Packaging Distribusi (`scripts/build.py`)**:
+  - [x] Kompilasi biner `release/RaptechAutoTrade.exe` sukses dengan embedded icon dan slim packaging.
+
+---
+
+### Phase 17: Comprehensive 3-Cycle Audit, TUI HUD Telemetry & System Hardening
+- [x] **17.1 Siklus Audit 1 — Test Runner & Parameter Sizing Alignment**:
+  - [x] Tambahkan konfigurasi `pytest.ini` (`pythonpath = .`, `testpaths = tests`) agar test runner mandiri dapat dijalankan langsung via `pytest` tanpa error `ModuleNotFoundError`.
+  - [x] Sinkronisasi otomatis parameter risiko strategi (`get_risk_settings()`) ke `Backtester` dan CLI subcommand `backtest` sehingga strategi dengan parameter mandiri (seperti SL/TP Aura Nexus) tidak ter-overwrite oleh default profil generik.
+  - [x] Perluas unit test `tests/test_backtester.py` dengan pengujian `test_backtester_aura_nexus_auto_risk`.
+- [x] **17.2 Siklus Audit 2 — TUI Live Dashboard Telemetry & Edge-Case Guarding**:
+  - [x] Integrasikan panel telemetry HUD visual pada `tui/light_app.py` (`render_live_view`) untuk menampilkan telemetry langsung dari strategi (`get_hud_info()`): Trend Bias, M15 ADX status In/Off Band, EMA Distance, dan Red Zone window.
+  - [x] Perbaiki potensi `AttributeError` pada `render_live_view` dan `render_overview_view` jika backend bernilai `None` saat inisialisasi awal atau reconnect.
+  - [x] Tambahkan unit test `test_light_app_render_live_view_aura_nexus_hud` pada `tests/test_tui.py`.
+- [x] **17.3 Siklus Audit 3 — Repositori Git, Sanitasi Media & Final Build Packaging**:
+  - [x] Tambahkan aturan `*.mp4`, `*.mkv`, `*.avi` ke `.gitignore` untuk mencegah aset video binary besar mengotori repositori git.
+  - [x] Jalankan audit menyeluruh test suite: **107/107 unit test passed (100% hijau)**.
+  - [x] Kompilasi ulang executable mandiri `release/RaptechAutoTrade.exe` (45.6 MB) dan paket zip customer `release/Raptech_AutoTrade_v3.1.0.zip` (45.2 MB) serta verifikasi eksekusi offline.
+
+---
+
+### Phase 18: 100% Running Flow Parity, Grid DCA Spacing & Shared Basket Liquidation
+- [x] **18.1 Siklus Audit 1 — Paritas Eksekusi DCA Multi-Layer & Jarak Grid**:
+  - [x] Implementasikan validasi jarak `grid_step_points` di `core/bot_engine.py`: layer berikutnya dalam arah yang sama hanya dibuka jika harga telah bergerak minimal 100 poin (~1.00 USD) dari layer sebelumnya (mencegah penumpukan order di harga sama).
+  - [x] Batasi jumlah layer DCA aktif searah secara ketat sesuai `max_open_positions = 16`.
+- [x] **18.2 Siklus Audit 2 — Sinkronisasi Shared Basket Take Profit & Target Profit**:
+  - [x] Implementasikan fungsi `_sync_basket_protections()` di `core/bot_engine.py`: menyinkronkan Take Profit seluruh layer aktif ke harga Break-Even rata-rata tertimbang (`calculate_basket_tp()`) sehingga seluruh layer tertutup serentak (*simultaneous basket exit*).
+  - [x] Implementasikan likuidasi serentak saat akumulasi profit mengambang keranjang mencapai `basket_target_profit` ($ USD).
+  - [x] Tambahkan pengecekan aman tipe numerik pada `spread_points` di `core/risk_manager.py`.
+- [x] **18.3 Siklus Audit 3 — Paritas Telemetry Intrabar & Verifikasi Build**:
+  - [x] Tambahkan `update_tick_telemetry()` di `strategies/aura_nexus.py` agar telemetry `EMA Distance` dan status `Red Zone` bergerak real-time mengikuti setiap tick harga pasar.
+  - [x] Perluas unit test di `tests/test_aura_nexus.py` menjadi 8 unit test khusus (Total sistem: **109/109 Passed, 100% Hijau**).
+  - [x] Kompilasi ulang executable mandiri `release/RaptechAutoTrade.exe` (45.6 MB) dan paket zip customer `release/Raptech_AutoTrade_v3.1.0.zip` (45.2 MB).
+
+---
+
+### Phase 19: One-Click Auto-Release Engine & GitHub OTA Auto-Updater
+- [x] **19.1 Single Source of Truth (SSOT) Versi Aplikasi (`core/version.py`)**:
+  - [x] Buat modul sentral `core/version.py` (`__version__ = "3.1.0"`, `GITHUB_REPO = "rezzboyy/Raptech-AutoTrade"`).
+  - [x] Hubungkan versi sentral ke `tui/light_app.py`, `core/bot_engine.py`, `scripts/build.py`, dan `scripts/package_customer.py`.
+- [x] **19.2 OTA Auto-Updater Engine & CLI Subcommand (`core/updater.py` & `cli/commands.py`)**:
+  - [x] Bangun modul `core/updater.py` untuk memeriksa rilis GitHub via GitHub REST API, membandingkan semver, mengunduh file biner dengan progress bar, dan menerapkan update in-place melalui batch runner otomatis.
+  - [x] Tambahkan perintah CLI `RaptechAutoTrade.exe update` (dengan opsi `--check` dan `--yes`).
+- [x] **19.3 Menu Interaktif Update OTA di TUI Dashboard (`tui/light_app.py`)**:
+  - [x] Tambahkan hotkey **`[U]` (Update OTA)** pada grup navigasi `[SYSTEM]` di Layar Utama dan Layar Live.
+  - [x] Tampilkan wizard interaktif konfirmasi pembaruan dengan info versi, ukuran download, changelog, dan instalasi 1-klik.
+- [x] **19.4 Script Otomasi Rilis 1-Klik (`release.ps1`)**:
+  - [x] Bangun master script `release.ps1` yang identik dengan pipeline BCA Mobile Android:
+    1. Auto-increment versi (misal: `3.1.0` -> `3.1.1` atau via `-Version`).
+    2. Quality Gate otomatis: menjalankan `pytest` (gagal rilis jika ada test error).
+    3. Kompilasi otomatis `RaptechAutoTrade.exe` dan zipping customer pack `Raptech_AutoTrade_vX.Y.Z.zip`.
+    4. Git stage, commit pesan standar `chore(release): bump version to vX.Y.Z`, dan push ke `origin/main`.
+    5. Publikasi rilis resmi ke GitHub Releases via GitHub CLI (`gh release create`) lengkap dengan kalkulasi SHA-256 hash.
+- [x] **19.5 Pengujian Test Suite & Validasi Sistem (`tests/test_updater.py` & `tests/test_cli.py`)**:
+  - [x] Buat unit test parsing semver dan komparasi versi di `tests/test_updater.py`.
+  - [x] Perbarui `tests/test_cli.py` dengan pengujian command `update --check`.
+  - [x] Seluruh test suite sistem lolos 100% (**112/112 Unit Tests PASSED**).
