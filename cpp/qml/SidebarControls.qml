@@ -74,13 +74,15 @@ Rectangle {
     }
 
     ScrollView {
+        id: scroll
         anchors.fill: parent
-        anchors.margins: 10
+        anchors.margins: 12
+        contentWidth: availableWidth
         clip: true
         ScrollBar.vertical: ThinScrollBar {}
 
         ColumnLayout {
-            width: parent.width
+            width: scroll.availableWidth
             spacing: 10
 
             // ================= 1. Controls Header =================

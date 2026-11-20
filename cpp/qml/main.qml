@@ -170,6 +170,8 @@ ApplicationWindow {
             SidebarControls {
                 id: sidebarControls
                 Layout.preferredWidth: 320
+                Layout.minimumWidth: 320
+                Layout.maximumWidth: 320
                 Layout.fillHeight: true
             }
 

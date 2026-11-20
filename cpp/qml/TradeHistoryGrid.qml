@@ -13,6 +13,28 @@ Rectangle {
 
     property int selectedIndex: 7 // Default highlight baris sesuai foto referensi pengguna
 
+    // Menu Klik Kanan (Context Menu Trash / Clear)
+    Menu {
+        id: historyContextMenu
+        MenuItem {
+            text: "Hapus Baris Ini"
+            icon.source: "qrc:/assets/trash.svg"
+            onTriggered: {
+                if (root.selectedIndex >= 0 && root.selectedIndex < historyModel.count) {
+                    historyModel.remove(root.selectedIndex)
+                }
+            }
+        }
+        MenuItem {
+            text: "Bersihkan Semua Riwayat"
+            icon.source: "qrc:/assets/trash.svg"
+            onTriggered: {
+                if (bot) bot.clearJournal()
+                historyModel.clear()
+            }
+        }
+    }
+
     // Model riwayat transaksi (mendukung data real bot.journal & default sample riwayat)
     ListModel {
         id: historyModel
@@ -112,9 +134,13 @@ Rectangle {
                     id: rowMouseArea
                     anchors.fill: parent
                     hoverEnabled: true
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: {
+                    onClicked: function(mouse) {
                         root.selectedIndex = index
+                        if (mouse.button === Qt.RightButton) {
+                            historyContextMenu.popup()
+                        }
                     }
                 }
 
@@ -214,6 +240,52 @@ Rectangle {
                     text: "Win Rate: " + ((bot && bot.stats && bot.stats.win_rate) ? bot.stats.win_rate.toFixed(1) : "73.7") + "%"
                     color: Theme.textSecondary
                     font.pixelSize: 11
+                }
+
+                // Tombol Trash Bersihkan Riwayat
+                Rectangle {
+                    Layout.preferredHeight: 22
+                    Layout.preferredWidth: clearBtnContent.implicitWidth + 14
+                    radius: 4
+                    color: trashMouse.containsMouse ? "#331616" : Theme.surfaceAlt
+                    border.color: trashMouse.containsMouse ? Theme.down : Theme.divider
+                    border.width: 1
+
+                    RowLayout {
+                        id: clearBtnContent
+                        anchors.centerIn: parent
+                        spacing: 5
+
+                        Image {
+                            source: "qrc:/assets/trash.svg"
+                            sourceSize: Qt.size(11, 11)
+                            Layout.preferredWidth: 11
+                            Layout.preferredHeight: 11
+                            opacity: historyModel.count > 0 ? (trashMouse.containsMouse ? 1.0 : 0.75) : 0.3
+                        }
+
+                        Text {
+                            text: "Bersihkan"
+                            color: historyModel.count > 0 ? (trashMouse.containsMouse ? Theme.down : Theme.textSecondary) : Theme.textMuted
+                            font.pixelSize: 10
+                            font.bold: true
+                        }
+                    }
+
+                    MouseArea {
+                        id: trashMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: historyModel.count > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        enabled: historyModel.count > 0
+                        onClicked: {
+                            if (bot) bot.clearJournal()
+                            historyModel.clear()
+                        }
+                    }
+
+                    ToolTip.visible: trashMouse.containsMouse
+                    ToolTip.text: "Hapus seluruh catatan riwayat transaksi (Clear History)"
                 }
 
                 Item { Layout.fillWidth: true }

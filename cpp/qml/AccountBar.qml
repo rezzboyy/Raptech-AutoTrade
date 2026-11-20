@@ -2,32 +2,28 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// Ringkasan akun komprehensif untuk header dengan ikon SVG dan saldo otomatis terbaca.
+// Ringkasan akun komprehensif untuk header dengan ikon SVG dan saldo otomatis terbaca (Flat Clean Header).
 RowLayout {
     id: root
-    spacing: 10
+    spacing: 16
 
     readonly property bool live: bot ? (bot.connected && bot.serverConnected) : false
     readonly property bool connected: bot ? bot.connected : false
 
-    // Komponen Kartu/Chip Metrik Akun dengan Ikon SVG
-    component AccountChip: Rectangle {
+    // Komponen Chip Metrik Akun Flat tanpa background badge
+    component AccountChip: Item {
         property string iconSource: ""
         property string label: ""
         property string value: "—"
         property color valueColor: Theme.textPrimary
 
         implicitHeight: 38
-        implicitWidth: chipRow.implicitWidth + 20
-        radius: 6
-        color: Theme.surfaceAlt
-        border.color: Theme.divider
-        border.width: 1
+        implicitWidth: chipRow.implicitWidth + 8
 
         RowLayout {
             id: chipRow
             anchors.centerIn: parent
-            spacing: 8
+            spacing: 7
 
             Image {
                 source: iconSource
@@ -57,14 +53,10 @@ RowLayout {
         }
     }
 
-    // 1. Identitas Akun & Server (Dengan SVG Account)
-    Rectangle {
+    // 1. Identitas Akun & Server (Dengan SVG Account - Flat Clean)
+    Item {
         implicitHeight: 38
-        implicitWidth: idRow.implicitWidth + 20
-        radius: 6
-        color: Theme.surfaceAlt
-        border.color: root.connected ? (root.live ? Theme.border : "#c9922e") : Theme.divider
-        border.width: 1
+        implicitWidth: idRow.implicitWidth + 8
 
         RowLayout {
             id: idRow
@@ -80,29 +72,21 @@ RowLayout {
                 opacity: 0.9
             }
 
-            // Badge Type (REAL / DEMO / OFFLINE)
-            Rectangle {
-                radius: 4
+            // Teks Status (REAL / DEMO / OFFLINE) Flat tanpa background badge
+            Text {
+                text: {
+                    if (!root.connected) return "OFFLINE"
+                    if (bot && bot.accountType !== "?") return bot.accountType
+                    return "DEMO"
+                }
                 color: {
-                    if (!root.connected) return Theme.surface
+                    if (!root.connected) return Theme.textMuted
                     if (bot && bot.accountType === "REAL") return Theme.down
                     if (bot && bot.accountType === "CONTEST") return "#c9922e"
                     return Theme.up
                 }
-                Layout.preferredHeight: 18
-                Layout.preferredWidth: badgeTxt.implicitWidth + 10
-                Text {
-                    id: badgeTxt
-                    anchors.centerIn: parent
-                    text: {
-                        if (!root.connected) return "OFFLINE"
-                        if (bot && bot.accountType !== "?") return bot.accountType
-                        return "DEMO"
-                    }
-                    color: !root.connected ? Theme.textMuted : "#ffffff"
-                    font.pixelSize: 9
-                    font.bold: true
-                }
+                font.pixelSize: 10
+                font.bold: true
             }
 
             // Login & Server Info
@@ -132,6 +116,8 @@ RowLayout {
             }
         }
     }
+
+    Rectangle { Layout.preferredHeight: 18; Layout.preferredWidth: 1; color: Theme.divider }
 
     // 2. Chip Saldo (Balance) — Otomatis Terbaca
     AccountChip {
@@ -172,14 +158,12 @@ RowLayout {
         }
     }
 
-    // 6. Indikator Status Broker
-    Rectangle {
+    Rectangle { Layout.preferredHeight: 18; Layout.preferredWidth: 1; color: Theme.divider }
+
+    // 6. Indikator Status Broker (Flat)
+    Item {
         implicitHeight: 38
-        implicitWidth: brokerRow.implicitWidth + 16
-        radius: 6
-        color: Theme.surfaceAlt
-        border.color: Theme.divider
-        border.width: 1
+        implicitWidth: brokerRow.implicitWidth + 8
 
         RowLayout {
             id: brokerRow
@@ -206,57 +190,47 @@ RowLayout {
         }
     }
 
-    // 7. Indikator Algo Trading MT5
+    // 7. Indikator Algo Trading MT5 (Flat)
     Item {
-        implicitWidth: algoBox.implicitWidth
+        implicitWidth: algoContent.implicitWidth + 8
         implicitHeight: 38
 
-        Rectangle {
-            id: algoBox
-            anchors.fill: parent
-            implicitWidth: algoContent.implicitWidth + 16
-            radius: 6
-            color: (bot && bot.tradeBlocked) ? "#331616" : Theme.surfaceAlt
-            border.color: (bot && bot.tradeBlocked) ? Theme.down : Theme.divider
-            border.width: 1
+        RowLayout {
+            id: algoContent
+            anchors.centerIn: parent
+            spacing: 6
 
-            RowLayout {
-                id: algoContent
-                anchors.centerIn: parent
-                spacing: 6
+            Image {
+                source: "qrc:/assets/bolt.svg"
+                sourceSize: Qt.size(14, 14)
+                Layout.preferredWidth: 14
+                Layout.preferredHeight: 14
+                fillMode: Image.PreserveAspectFit
+                opacity: (!root.connected) ? 0.3 : 1.0
+            }
 
-                Image {
-                    source: "qrc:/assets/bolt.svg"
-                    sourceSize: Qt.size(14, 14)
-                    Layout.preferredWidth: 14
-                    Layout.preferredHeight: 14
-                    fillMode: Image.PreserveAspectFit
-                    opacity: (!root.connected) ? 0.3 : 1.0
+            ColumnLayout {
+                spacing: 1
+                RowLayout {
+                    spacing: 3
+                    Text { text: "ALGO TRADING"; color: Theme.textMuted; font.pixelSize: 9; font.letterSpacing: 0.5 }
+                    Text { text: "🔍"; font.pixelSize: 8; opacity: 0.7 }
                 }
-
-                ColumnLayout {
-                    spacing: 1
-                    RowLayout {
-                        spacing: 3
-                        Text { text: "ALGO TRADING"; color: Theme.textMuted; font.pixelSize: 9; font.letterSpacing: 0.5 }
-                        Text { text: "🔍"; font.pixelSize: 8; opacity: 0.7 }
+                Text {
+                    text: {
+                        if (!root.connected) return "Offline"
+                        if (bot && bot.tradeBlocked) return "Ditolak MT5"
+                        if (bot && !bot.tradeAllowed) return "Mati (Ctrl+E)"
+                        return "Aktif"
                     }
-                    Text {
-                        text: {
-                            if (!root.connected) return "Offline"
-                            if (bot && bot.tradeBlocked) return "Ditolak MT5"
-                            if (bot && !bot.tradeAllowed) return "Mati (Ctrl+E)"
-                            return "Aktif"
-                        }
-                        color: {
-                            if (!root.connected) return Theme.textMuted
-                            if (bot && bot.tradeBlocked) return Theme.down
-                            if (bot && !bot.tradeAllowed) return "#c9922e"
-                            return Theme.up
-                        }
-                        font.pixelSize: 11
-                        font.bold: true
+                    color: {
+                        if (!root.connected) return Theme.textMuted
+                        if (bot && bot.tradeBlocked) return Theme.down
+                        if (bot && !bot.tradeAllowed) return "#c9922e"
+                        return Theme.up
                     }
+                    font.pixelSize: 11
+                    font.bold: true
                 }
             }
         }

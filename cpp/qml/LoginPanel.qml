@@ -71,14 +71,15 @@ Rectangle {
     ScrollView {
         id: panelScroll
         anchors.fill: parent
-        anchors.margins: 12
+        anchors.margins: 16
+        contentWidth: availableWidth
         clip: true
         ScrollBar.vertical: ThinScrollBar {}
-        ScrollBar.horizontal: ThinScrollBar {}
 
         ColumnLayout {
-            width: panelScroll.availableWidth > 0 ? panelScroll.availableWidth : (root.width - 24)
-            spacing: 10
+            id: mainForm
+            width: Math.min(panelScroll.availableWidth > 0 ? panelScroll.availableWidth : (root.width - 32), 620)
+            spacing: 12
 
             RowLayout {
                 Layout.fillWidth: true

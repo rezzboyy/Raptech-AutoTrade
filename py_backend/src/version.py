@@ -2,7 +2,7 @@
 Raptech AutoTrade Desktop — Version & GitHub OTA Constants.
 """
 
-__version__ = "3.2.0"
+__version__ = "3.2.1"
 APP_NAME = "X Trading Engine"
 GITHUB_REPO_OWNER = "rezzboyy"
 GITHUB_REPO_NAME = "Raptech-AutoTrade"
