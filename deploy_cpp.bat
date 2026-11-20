@@ -6,9 +6,8 @@ REM ============================================================
 setlocal
 
 set "JUNC=C:\XaviqCpp"
-if not exist "%JUNC%" (
-    mklink /J "%JUNC%" "%~dp0cpp" >nul
-)
+if exist "%JUNC%" rmdir "%JUNC%" >nul 2>&1
+mklink /J "%JUNC%" "%~dp0cpp" >nul 2>&1
 
 echo ==^> Memaketkan rilis mandiri C++...
 powershell -ExecutionPolicy Bypass -File "%JUNC%\deploy.ps1"

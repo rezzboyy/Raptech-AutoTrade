@@ -21,6 +21,7 @@ logs/
 # Artefak build PyInstaller
 build/
 dist/
+build_test_bridge/
 *.manifest
 
 # Ikon yang di-generate
@@ -47,4 +48,5 @@ aqtinstall.log
 *.log
 _*.txt
 .vscode/
+{*}.png
 

@@ -31,11 +31,17 @@ Rectangle {
 
     FileDialog {
         id: scriptFileDialog
-        title: "Pilih file skrip (.js)"
-        nameFilters: ["Skrip JavaScript (*.js)"]
+        title: "Pilih file skrip strategi (.py / .js)"
+        nameFilters: ["Skrip Trading (*.py *.js)", "Skrip Python (*.py)", "Skrip JavaScript (*.js)", "Semua File (*.*)"]
         onAccepted: {
             var src = bot.loadScriptFile(selectedFile.toString())
-            if (src && src.length > 0) { editor.text = src; root.runValidate() }
+            if (src && src.length > 0) {
+                editor.text = src
+                var pathStr = selectedFile.toString()
+                var nameOnly = pathStr.split('/').pop().replace(/\.(py|js)$/i, '')
+                nameField.text = nameOnly
+                root.runValidate()
+            }
         }
     }
 

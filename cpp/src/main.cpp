@@ -1,5 +1,6 @@
 // XAVIQ Trading Engine (C++/Qt6) — entry point.
 
+#include <QDir>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -11,7 +12,9 @@
 #include <QUrl>
 
 #include "app/BotController.h"
+#include "app/UpdateManager.h"
 #include "core/Logger.h"
+#include "core/Version.h"
 #include "ui/JsHighlighter.h"
 
 int main(int argc, char *argv[])
@@ -24,8 +27,14 @@ int main(int argc, char *argv[])
     if (grabMode) qputenv("QT_QUICK_BACKEND", "software");
 
     QGuiApplication app(argc, argv);
-    app.setApplicationName("XAVIQ Trading Engine");
+    app.setApplicationName(Xaviq::APP_NAME);
+    app.setApplicationVersion(Xaviq::APP_VERSION);
     app.setOrganizationName("XAVIQ");
+
+    // Pastikan working directory selalu berada di folder binary aplikasi
+    // agar pembacaan config.json, scripts/, profiles/, dan logs/ selalu konsisten
+    // saat dijalankan dari shortcut Desktop, taskbar, atau laptop lain.
+    QDir::setCurrent(QCoreApplication::applicationDirPath());
 
     Logger::init();
     QQuickStyle::setStyle("Material");
@@ -34,6 +43,7 @@ int main(int argc, char *argv[])
     qmlRegisterType<JsHighlighter>("Xaviq", 1, 0, "JsHighlighter");
 
     BotController controller;
+    UpdateManager updater;
 
     // Parsing argumen: --grab <png>, --qml <file> (opsional untuk demo).
     const QStringList args = app.arguments();
@@ -45,6 +55,7 @@ int main(int argc, char *argv[])
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("bot", &controller);
+    engine.rootContext()->setContextProperty("updater", &updater);
     const QUrl url = altQml.isEmpty()
         ? QUrl(QStringLiteral("qrc:/qml/main.qml"))
         : QUrl::fromLocalFile(altQml);

@@ -17,7 +17,8 @@ ColumnLayout {
         if (!bot) return
         var c = bot.getConfig()
         symbolField.text = c.symbol || "EURUSDm"
-        timeframeBox.currentIndex = Math.max(0, timeframeBox.model.indexOf(c.timeframe_str))
+        var curTf = c.timeframe_str || (bot ? bot.timeframe : "M5")
+        timeframeBox.currentIndex = Math.max(0, timeframeBox.model.indexOf(curTf))
         riskField.text = String(c.risk_per_trade !== undefined ? c.risk_per_trade : 0.01)
         maxPosField.text = String(c.max_open_positions || 1)
         magicField.text = String(c.magic_number || 100200)
@@ -45,6 +46,14 @@ ColumnLayout {
         exposureField.text = String(c.max_exposure_lots !== undefined ? c.max_exposure_lots : 0)
         equityStopField.text = String((c.equity_stop_loss !== undefined ? c.equity_stop_loss : 0) * 100)
         lossStreakField.text = String(c.max_consecutive_losses !== undefined ? c.max_consecutive_losses : 0)
+    }
+
+    Connections {
+        target: bot
+        function onTimeframeChanged(tf) {
+            var idx = timeframeBox.model.indexOf(tf)
+            if (idx >= 0) timeframeBox.currentIndex = idx
+        }
     }
 
     function collect() {

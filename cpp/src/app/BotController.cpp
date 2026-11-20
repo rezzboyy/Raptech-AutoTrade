@@ -1,47 +1,147 @@
 #include "app/BotController.h"
 
-#include "app/Worker.h"
-#include "backend/McpBackend.h"
+#include "app/PyBridgeWorker.h"
 #include "core/ConfigStore.h"
 #include "core/SecureStore.h"
 #include "core/Settings.h"
-#include "engine/BotEngine.h"
-#include "script/ScriptStrategy.h"
-#include "strategy/Strategy.h"
+#include "indicators/Indicators.h"
 
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QProcess>
 #include <QRegularExpression>
+#include <QStandardPaths>
 #include <QTextStream>
 #include <QThread>
 #include <QUrl>
 
-namespace {
-const char *kScriptTemplate = R"JS(// Strategi kustom (Mode Programmer - JavaScript).
-// Atur SETTINGS (opsional), PARAMS (opsional), dan fungsi on_bar(ctx).
-
-var SETTINGS = {
-    symbol: "EURUSDm",
-    timeframe: "M5",
-    volume: 0.01,
-    sl_points: 300,
-    tp_points: 600,
-    max_positions: 1,
-};
-
-var PARAMS = { fast: 12, slow: 26 };
-
-function on_bar(ctx) {
-    var fast = ctx.ema(ctx.close, ctx.params.fast);
-    var slow = ctx.ema(ctx.close, ctx.params.slow);
-    if (ctx.crossover(fast, slow)) return ctx.buy();
-    if (ctx.crossunder(fast, slow)) return ctx.sell();
-    return null;
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <tlhelp32.h>
+static bool isTerminalRunning()
+{
+    PROCESSENTRY32W entry;
+    entry.dwSize = sizeof(PROCESSENTRY32W);
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE)
+        return false;
+    bool found = false;
+    if (Process32FirstW(snapshot, &entry)) {
+        do {
+            if (_wcsicmp(entry.szExeFile, L"terminal64.exe") == 0 ||
+                _wcsicmp(entry.szExeFile, L"terminal.exe") == 0) {
+                found = true;
+                break;
+            }
+        } while (Process32NextW(snapshot, &entry));
+    }
+    CloseHandle(snapshot);
+    return found;
 }
-)JS";
+#else
+static bool isTerminalRunning() { return false; }
+#endif
+
+namespace {
+static QString findTerminalPath(const QString &customPath)
+{
+    const QString p = customPath.trimmed();
+    if (!p.isEmpty() && QFile::exists(p))
+        return p;
+
+    // Cek terminal di PATH jika ada
+    QString inPath = QStandardPaths::findExecutable(QStringLiteral("terminal64.exe"));
+    if (!inPath.isEmpty() && QFile::exists(inPath))
+        return inPath;
+
+    const QString progFiles = qEnvironmentVariable("ProgramFiles");
+    const QString progFilesX86 = qEnvironmentVariable("ProgramFiles(x86)");
+
+    QStringList candidates = {
+        QStringLiteral("C:\\Program Files\\MetaTrader 5 EXNESS\\terminal64.exe"),
+        QStringLiteral("C:\\Program Files\\MetaTrader 5\\terminal64.exe"),
+        QStringLiteral("C:\\Program Files (x86)\\MetaTrader 5\\terminal64.exe"),
+        QStringLiteral("C:\\MetaTrader 5\\terminal64.exe"),
+        QStringLiteral("D:\\Program Files\\MetaTrader 5\\terminal64.exe"),
+        QStringLiteral("D:\\MetaTrader 5\\terminal64.exe")
+    };
+
+    if (!progFiles.isEmpty()) {
+        candidates.prepend(progFiles + QStringLiteral("\\MetaTrader 5 EXNESS\\terminal64.exe"));
+        candidates.prepend(progFiles + QStringLiteral("\\MetaTrader 5\\terminal64.exe"));
+    }
+    if (!progFilesX86.isEmpty()) {
+        candidates << progFilesX86 + QStringLiteral("\\MetaTrader 5\\terminal64.exe");
+    }
+
+    for (const QString &cand : candidates) {
+        if (QFile::exists(cand))
+            return cand;
+    }
+
+    // Dynamic scanning: periksa folder di ProgramFiles yang bernama *MetaTrader* atau *MT5*
+    auto scanDir = [](const QString &baseDir) -> QString {
+        if (baseDir.isEmpty()) return QString();
+        QDir dir(baseDir);
+        if (!dir.exists()) return QString();
+        const QStringList entries = dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+        for (const QString &entry : entries) {
+            if (entry.contains(QStringLiteral("MetaTrader"), Qt::CaseInsensitive) ||
+                entry.contains(QStringLiteral("MT5"), Qt::CaseInsensitive)) {
+                QString term = dir.filePath(entry + QStringLiteral("/terminal64.exe"));
+                if (QFile::exists(term))
+                    return QDir::toNativeSeparators(term);
+            }
+        }
+        return QString();
+    };
+
+    QString found = scanDir(progFiles);
+    if (!found.isEmpty()) return found;
+    found = scanDir(progFilesX86);
+    if (!found.isEmpty()) return found;
+    found = scanDir(QStringLiteral("C:\\Program Files"));
+    if (!found.isEmpty()) return found;
+
+    return QString();
+}
+
+const char *kScriptTemplate = R"PY("""Strategi kustom (Mode Programmer - Python).
+Atur SETTINGS (opsional), PARAMS (opsional), dan fungsi on_bar(ctx).
+"""
+
+SETTINGS = {
+    "symbol": "EURUSDm",          # Simbol aktif (mis. EURUSDm, XAUUSDm, BTCUSDm)
+    "timeframe": "M5",            # Timeframe M1, M5, M15, M30, H1, H4, D1
+    "volume": 0.01,               # Ukuran lot per order
+    "sl_points": 300,             # Stop Loss dalam points
+    "tp_points": 600,             # Take Profit dalam points
+    "max_positions": 1,           # Maksimal posisi terbuka bersamaan
+    "trailing_stop_points": 200,  # Trailing stop points (0 = nonaktif)
+    "trailing_step_points": 50,
+    "break_even_points": 150,     # Break-even stop points (0 = nonaktif)
+    "break_even_offset_points": 10,
+    "max_spread_points": 35,      # Batas maksimal spread points
+}
+
+PARAMS = [
+    {"key": "fast", "label": "EMA Cepat", "type": "int", "default": 12, "min": 1},
+    {"key": "slow", "label": "EMA Lambat", "type": "int", "default": 26, "min": 2},
+]
+
+def on_bar(ctx):
+    fast = ctx.ema(ctx.close, ctx.params.fast)
+    slow = ctx.ema(ctx.close, ctx.params.slow)
+    if ctx.crossover(fast, slow):
+        return ctx.buy()
+    if ctx.crossunder(fast, slow):
+        return ctx.sell()
+    return None
+)PY";
 } // namespace
 
 BotController::BotController(QObject *parent) : QObject(parent)
@@ -53,22 +153,11 @@ BotController::BotController(QObject *parent) : QObject(parent)
 
 BotController::~BotController()
 {
-    if (m_thread) {
-        m_worker->requestStop();
-        m_thread->quit();
-        m_thread->wait(3000);
-        delete m_worker;
-        delete m_thread;
+    if (m_pyWorker) {
+        m_pyWorker->requestStop();
+        delete m_pyWorker;
+        m_pyWorker = nullptr;
     }
-    delete m_engine;
-    if (m_ownBackend)
-        delete m_backend;
-    delete m_injectedBackend;
-}
-
-void BotController::setInjectedBackend(TradingBackend *backend)
-{
-    m_injectedBackend = backend;
 }
 
 QString BotController::backend() const { return settings().backend; }
@@ -115,76 +204,74 @@ void BotController::setMcpConfig(const QString &endpoint, const QString &apiKey)
     setBackend(QStringLiteral("mcp"));
 }
 
-void BotController::buildStrategy()
-{
-    std::unique_ptr<Strategy> strat;
-    if (settings().strategyName == "custom_script")
-        strat = std::make_unique<ScriptStrategy>(settings().scriptSource);
-    else {
-        QHash<QString, double> params;
-        const QVariantMap sp = settings().strategyParams;
-        for (auto it = sp.constBegin(); it != sp.constEnd(); ++it)
-            params.insert(it.key(), it.value().toDouble());
-        strat = createStrategy(settings().strategyName, params);
-        if (!strat)
-            strat = createStrategy("ma_cross");
-    }
-    m_engine->setStrategy(std::move(strat));
-}
-
 void BotController::connectBot()
 {
-    if (m_connected || m_thread)
+    if (m_connected || (m_pyWorker && m_pyWorker->isRunning()))
         return;
-    // Backend Native belum tersedia di versi C++ (tak ada library MT5 untuk C++).
-    if (settings().backend == "native" && !m_injectedBackend) {
-        emit configError(QStringLiteral(
-            "Backend Native belum tersedia di versi C++ ini (tidak ada library MetaTrader5 "
-            "untuk C++). Profil tetap tersimpan, tetapi untuk connect gunakan metode MCP."));
-        setStatus(QStringLiteral("Terputus"));
-        return;
+
+    // Backend Native: hubungkan ke terminal MT5 lokal via kredensial akun
+    if (settings().backend == "native") {
+        const QString termPath = findTerminalPath(settings().path);
+        const bool alreadyRunning = isTerminalRunning();
+        if (alreadyRunning) {
+            emit logMessage(QStringLiteral("[MT5] Terminal MT5 sudah berjalan. Menghubungkan ke sesi aktif..."));
+        } else if (!termPath.isEmpty() && settings().login > 0 && !settings().server.isEmpty() && !settings().password.isEmpty()) {
+            emit logMessage(QStringLiteral("[MT5] Meluncurkan terminal MT5 (Akun #%1)...")
+                               .arg(settings().login));
+            QStringList args;
+            args << QStringLiteral("/login:%1").arg(settings().login);
+            args << QStringLiteral("/server:%1").arg(settings().server);
+            args << QStringLiteral("/password:%1").arg(settings().password);
+            QProcess::startDetached(termPath, args);
+        }
     }
     setStatus(QStringLiteral("Menghubungkan..."));
 
-    // Backend: injeksi test, atau bangun McpBackend dari settings.
-    if (m_injectedBackend) {
-        m_backend = m_injectedBackend;
-        m_ownBackend = false;
-    } else {
-        m_backend = new McpBackend(settings().mcpEndpoint, settings().mcpApiKey);
-        m_ownBackend = true;
+    // Jalankan Python Trading Engine via PyBridgeWorker
+    if (m_pyWorker) {
+        m_pyWorker->stopBridge();
+        m_pyWorker->deleteLater();
+        m_pyWorker = nullptr;
     }
-    m_engine = new BotEngine(m_backend, &settings());
-    buildStrategy();
 
-    m_thread = new QThread();
-    m_worker = new Worker(m_engine, &settings(), m_chartSymbol);
-    m_worker->moveToThread(m_thread);
+    m_pyWorker = new PyBridgeWorker(this);
+    connect(m_pyWorker, &PyBridgeWorker::accountUpdated, this, &BotController::onAccount);
+    connect(m_pyWorker, &PyBridgeWorker::positionsUpdated, this, &BotController::onPositions);
+    connect(m_pyWorker, &PyBridgeWorker::ordersUpdated, this, &BotController::onOrders);
+    connect(m_pyWorker, &PyBridgeWorker::journalUpdated, this, &BotController::onJournal);
+    connect(m_pyWorker, &PyBridgeWorker::candlesUpdated, this, &BotController::onCandles);
+    connect(m_pyWorker, &PyBridgeWorker::symbolsListed, this, &BotController::onSymbols);
+    connect(m_pyWorker, &PyBridgeWorker::statsUpdated, this, &BotController::onStats);
+    connect(m_pyWorker, &PyBridgeWorker::equityUpdated, this, &BotController::onEquity);
+    connect(m_pyWorker, &PyBridgeWorker::autoTradingDisabled, this, &BotController::onAutoDisabled);
+    connect(m_pyWorker, &PyBridgeWorker::orderFeedback, this, &BotController::onOrderFeedback);
+    connect(m_pyWorker, &PyBridgeWorker::connectedChanged, this, &BotController::onWorkerConnected);
+    connect(m_pyWorker, &PyBridgeWorker::chartSymbolChanged, this, &BotController::onWorkerChartSymbol);
+    connect(m_pyWorker, &PyBridgeWorker::timeframeChanged, this, &BotController::onWorkerTimeframe);
+    connect(m_pyWorker, &PyBridgeWorker::logMessage, this, &BotController::logMessage);
+    connect(m_pyWorker, &PyBridgeWorker::stopped, this, &BotController::onWorkerStopped);
 
-    connect(m_thread, &QThread::started, m_worker, &Worker::run);
-    connect(m_worker, &Worker::accountUpdated, this, &BotController::onAccount);
-    connect(m_worker, &Worker::positionsUpdated, this, &BotController::onPositions);
-    connect(m_worker, &Worker::ordersUpdated, this, &BotController::onOrders);
-    connect(m_worker, &Worker::journalUpdated, this, &BotController::onJournal);
-    connect(m_worker, &Worker::candlesUpdated, this, &BotController::onCandles);
-    connect(m_worker, &Worker::symbolsListed, this, &BotController::onSymbols);
-    connect(m_worker, &Worker::statsUpdated, this, &BotController::onStats);
-    connect(m_worker, &Worker::equityUpdated, this, &BotController::onEquity);
-    connect(m_worker, &Worker::autoTradingDisabled, this, &BotController::onAutoDisabled);
-    connect(m_worker, &Worker::connectedChanged, this, &BotController::onWorkerConnected);
-    connect(m_worker, &Worker::chartSymbolChanged, this, &BotController::onWorkerChartSymbol);
-    connect(m_worker, &Worker::stopped, this, &BotController::onWorkerStopped);
+    QVariantMap p;
+    p[QStringLiteral("backend")] = settings().backend; // "native" (MetaTrader5 package) atau "mcp"
+    p[QStringLiteral("login")] = static_cast<qlonglong>(settings().login);
+    p[QStringLiteral("password")] = settings().password;
+    p[QStringLiteral("server")] = settings().server;
+    p[QStringLiteral("path")] = settings().path;
+    p[QStringLiteral("mcp_endpoint")] = settings().mcpEndpoint;
+    p[QStringLiteral("mcp_api_key")] = settings().mcpApiKey;
+    p[QStringLiteral("symbol")] = m_chartSymbol.isEmpty() ? settings().symbol : m_chartSymbol;
+    p[QStringLiteral("chart_symbol")] = m_chartSymbol.isEmpty() ? settings().symbol : m_chartSymbol;
 
-    m_thread->start();
+    m_pyWorker->connectBackend(p);
 }
 
 void BotController::disconnectBot()
 {
-    if (m_worker) {
-        setStatus(QStringLiteral("Memutus..."));
-        setTradingState(false);
-        m_worker->setTrading(false);
-        m_worker->requestStop();
+    setStatus(QStringLiteral("Memutus..."));
+    setTradingState(false);
+    if (m_pyWorker) {
+        m_pyWorker->setTrading(false);
+        m_pyWorker->requestStop();
     }
 }
 
@@ -193,7 +280,7 @@ void BotController::logoutAccount()
     disconnectBot();
     emit positionsChanged({});
     emit ordersChanged({});
-    emit logMessage(QStringLiteral("[SISTEM] Akun logout / terputus."));
+    emit logMessage(QStringLiteral("[SISTEM] Akun logout / koneksi ditutup."));
 }
 
 void BotController::setTrading(bool enabled)
@@ -203,9 +290,34 @@ void BotController::setTrading(bool enabled)
         return;
     }
     setTradingState(enabled);
-    if (m_worker)
-        m_worker->setTrading(enabled);
+    if (m_pyWorker) {
+        if (enabled) {
+            m_pyWorker->reloadStrategy();
+        }
+        m_pyWorker->setTrading(enabled);
+    }
     setStatus(enabled ? QStringLiteral("Trading aktif") : QStringLiteral("Terhubung"));
+
+    const QString sym = settings().symbol;
+    const QString tf = settings().timeframeStr;
+    QString strat = settings().strategyName;
+    if (strat.isEmpty() || strat == QStringLiteral("custom_script"))
+        strat = QStringLiteral("Mode Programmer");
+
+    QVariantMap jEntry;
+    jEntry["symbol"] = sym;
+    jEntry["ok"] = true;
+
+    if (enabled) {
+        jEntry["action"] = QStringLiteral("START");
+        jEntry["detail"] = QStringLiteral("Mode Programmer aktif — Skrip strategi berjalan (Simbol: %1, Timeframe: %2)").arg(sym, tf);
+        emit logMessage(QStringLiteral("[SKRIP] Mode Programmer aktif — Skrip strategi berjalan (%1, TF: %2).").arg(sym, tf));
+    } else {
+        jEntry["action"] = QStringLiteral("STOP");
+        jEntry["detail"] = QStringLiteral("Mode Programmer dinonaktifkan — Auto-trading dihentikan pengguna");
+        emit logMessage(QStringLiteral("[SKRIP] Mode Programmer dinonaktifkan — Auto-trading dihentikan."));
+    }
+    onJournal(jEntry);
 }
 
 void BotController::closePosition(qlonglong ticket)
@@ -214,19 +326,27 @@ void BotController::closePosition(qlonglong ticket)
         emit configError(QStringLiteral("Tidak terhubung ke MT5."));
         return;
     }
-    if (m_worker)
-        m_worker->enqueueClose(ticket);
+    if (m_pyWorker)
+        m_pyWorker->enqueueClose(ticket);
+    emit logMessage(QStringLiteral("[ORDER] Meminta penutupan posisi ticket #%1...").arg(ticket));
 }
 
-void BotController::openManualOrder(const QString &symbol, const QString &side, double volume,
+void BotController::openManualOrder(const QString &symbolIn, const QString &side, double volume,
                                     double sl, double tp)
 {
     if (!m_connected) {
         emit configError(QStringLiteral("Hubungkan ke MT5 dulu sebelum kirim order."));
         return;
     }
+    QString symbol = symbolIn.trimmed();
+    if (symbol.isEmpty())
+        symbol = m_chartSymbol.isEmpty() ? settings().symbol : m_chartSymbol;
+    if (symbol.isEmpty()) {
+        emit configError(QStringLiteral("Simbol belum ditentukan. Masukkan nama simbol (misal EURUSDm)."));
+        return;
+    }
     if (volume <= 0) {
-        emit configError(QStringLiteral("Volume harus > 0."));
+        emit configError(QStringLiteral("Volume lot harus > 0 (contoh: 0.01)."));
         return;
     }
     ManualCommand c;
@@ -236,14 +356,24 @@ void BotController::openManualOrder(const QString &symbol, const QString &side, 
     c.volume = volume;
     c.sl = sl;
     c.tp = tp;
-    m_worker->enqueue(c);
+    if (m_pyWorker)
+        m_pyWorker->enqueue(c);
+    emit logMessage(QStringLiteral("[ORDER] Mengirim order manual %1 %2 (vol: %3)...")
+                        .arg(side.toUpper(), symbol).arg(volume, 0, 'f', 2));
 }
 
-void BotController::placePendingOrder(const QString &symbol, const QString &orderType,
+void BotController::placePendingOrder(const QString &symbolIn, const QString &orderType,
                                       double volume, double price, double sl, double tp)
 {
     if (!m_connected) {
         emit configError(QStringLiteral("Hubungkan ke MT5 dulu sebelum pasang pending order."));
+        return;
+    }
+    QString symbol = symbolIn.trimmed();
+    if (symbol.isEmpty())
+        symbol = m_chartSymbol.isEmpty() ? settings().symbol : m_chartSymbol;
+    if (symbol.isEmpty()) {
+        emit configError(QStringLiteral("Simbol belum ditentukan. Masukkan nama simbol (misal EURUSDm)."));
         return;
     }
     if (volume <= 0 || price <= 0) {
@@ -258,7 +388,34 @@ void BotController::placePendingOrder(const QString &symbol, const QString &orde
     c.price = price;
     c.sl = sl;
     c.tp = tp;
-    m_worker->enqueue(c);
+    if (m_pyWorker)
+        m_pyWorker->enqueue(c);
+    emit logMessage(QStringLiteral("[ORDER] Memasang pending order %1 %2 @ %3 (vol: %4)...")
+                        .arg(orderType.toUpper(), symbol).arg(price).arg(volume, 0, 'f', 2));
+}
+
+void BotController::openHedgeOrder(const QString &symbolIn, double volume)
+{
+    if (!m_connected) {
+        emit configError(QStringLiteral("Hubungkan ke MT5 dulu sebelum kirim order hedge."));
+        return;
+    }
+    QString symbol = symbolIn.trimmed();
+    if (symbol.isEmpty())
+        symbol = m_chartSymbol.isEmpty() ? settings().symbol : m_chartSymbol;
+    if (symbol.isEmpty()) {
+        emit configError(QStringLiteral("Simbol belum ditentukan untuk order hedge."));
+        return;
+    }
+    if (volume <= 0.0) {
+        emit configError(QStringLiteral("Volume lot hedge harus > 0 (contoh: 0.01)."));
+        return;
+    }
+
+    emit logMessage(QStringLiteral("[HEDGE] Eksekusi ganda BUY & SELL serentak (%1 lot %2)...")
+                        .arg(QString::number(volume, 'f', 2), symbol));
+    openManualOrder(symbol, QStringLiteral("BUY"), volume, 0.0, 0.0);
+    openManualOrder(symbol, QStringLiteral("SELL"), volume, 0.0, 0.0);
 }
 
 void BotController::closeAllPositions()
@@ -269,7 +426,15 @@ void BotController::closeAllPositions()
     }
     ManualCommand c;
     c.action = "close_all";
-    m_worker->enqueue(c);
+    if (m_pyWorker)
+        m_pyWorker->enqueue(c);
+    emit logMessage(QStringLiteral("[ORDER] Meminta penutupan semua posisi aktif..."));
+}
+
+void BotController::emergencyCloseAllReset()
+{
+    closeAllPositions();
+    emit logMessage(QStringLiteral("[RESET] Emergency Close All & State Reset berhasil dipicu."));
 }
 
 void BotController::deletePendingOrder(qlonglong ticket)
@@ -281,7 +446,9 @@ void BotController::deletePendingOrder(qlonglong ticket)
     ManualCommand c;
     c.action = "delete_order";
     c.ticket = ticket;
-    m_worker->enqueue(c);
+    if (m_pyWorker)
+        m_pyWorker->enqueue(c);
+    emit logMessage(QStringLiteral("[ORDER] Meminta hapus pending order ticket #%1...").arg(ticket));
 }
 
 void BotController::setChartSymbol(const QString &symbolIn)
@@ -292,9 +459,30 @@ void BotController::setChartSymbol(const QString &symbolIn)
     m_chartSymbol = symbol;
     settings().symbol = symbol;
     ConfigStore::save(settings());
-    if (m_worker)
-        m_worker->setChartSymbol(symbol);
+    if (m_pyWorker)
+        m_pyWorker->setChartSymbol(symbol);
     emit chartSymbolChanged(symbol);
+}
+
+QString BotController::timeframe() const
+{
+    return settings().timeframeStr;
+}
+
+void BotController::setTimeframe(const QString &tfIn)
+{
+    const QString tf = tfIn.trimmed().toUpper();
+    static const QSet<QString> validTfs = {"M1", "M5", "M15", "M30", "H1", "H4", "D1"};
+    if (!validTfs.contains(tf))
+        return;
+    if (tf == settings().timeframeStr)
+        return;
+    settings().timeframeStr = tf;
+    ConfigStore::save(settings());
+    if (m_pyWorker)
+        m_pyWorker->setTimeframe(tf);
+    emit timeframeChanged(tf);
+    emit logMessage(QStringLiteral("[CHART] Timeframe lilin diubah ke %1").arg(tf));
 }
 
 QVariantMap BotController::getConfig()
@@ -324,6 +512,11 @@ bool BotController::applyConfig(const QVariantMap &cfg)
         return false;
     }
     ConfigStore::save(settings());
+    if (m_pyWorker && m_pyWorker->isRunning()) {
+        QVariantMap p;
+        p[QStringLiteral("config")] = ConfigStore::toJson(settings()).toVariantMap();
+        m_pyWorker->sendCommand(QStringLiteral("apply_config"), p);
+    }
     return true;
 }
 
@@ -381,7 +574,15 @@ bool BotController::saveConfig(const QVariantMap &cfg)
     if (!stratParams.isEmpty())
         settings().strategyParams = stratParams;
     ConfigStore::save(settings());
-    emit logMessage(QStringLiteral("[UI] Konfigurasi disimpan."));
+    if (m_pyWorker && m_pyWorker->isRunning()) {
+        QVariantMap p;
+        p[QStringLiteral("config")] = ConfigStore::toJson(settings()).toVariantMap();
+        m_pyWorker->sendCommand(QStringLiteral("apply_config"), p);
+    }
+    if (cfg.contains(QStringLiteral("timeframe_str"))) {
+        emit timeframeChanged(settings().timeframeStr);
+    }
+    emit logMessage(QStringLiteral("[SISTEM] Konfigurasi berhasil disimpan."));
     return true;
 }
 
@@ -467,7 +668,7 @@ QVariantMap BotController::loadMcpProfileFile(const QString &url)
     if (!apiKey.isEmpty())
         settings().mcpApiKey = apiKey;
     setBackend(QStringLiteral("mcp"));
-    emit logMessage(QStringLiteral("[UI] Profil MCP '%1' dimuat.").arg(o.value("name").toString()));
+    emit logMessage(QStringLiteral("[PROFIL] Profil MCP '%1' berhasil dimuat.").arg(o.value("name").toString()));
     return QVariantMap{
         {"name", o.value("name").toString()}, {"endpoint", endpoint},
         {"hasKey", !apiKey.isEmpty()}};
@@ -483,7 +684,17 @@ bool BotController::deleteMcpProfile(const QString &file)
 
 // ---------- Profil kredensial Native ----------
 namespace {
-QString nativeDir() { return QStringLiteral("profiles"); }
+QString nativeDir()
+{
+    const QString appProf = QCoreApplication::applicationDirPath() + QStringLiteral("/profiles");
+    if (QDir(appProf).exists())
+        return appProf;
+    if (QDir(QStringLiteral("profiles")).exists())
+        return QStringLiteral("profiles");
+    if (QDir(QStringLiteral("C:/XaviqCpp/profiles")).exists())
+        return QStringLiteral("C:/XaviqCpp/profiles");
+    return QStringLiteral("profiles");
+}
 }
 
 QVariantList BotController::listProfiles()
@@ -522,7 +733,7 @@ QVariantMap BotController::loadProfileFile(const QString &url)
     if (!pw.isEmpty())
         settings().password = pw;
     setBackend(QStringLiteral("native"));
-    emit logMessage(QStringLiteral("[UI] Profil '%1' dimuat.").arg(o.value("name").toString()));
+    emit logMessage(QStringLiteral("[PROFIL] Profil Native '%1' berhasil dimuat.").arg(o.value("name").toString()));
     return QVariantMap{
         {"name", o.value("name").toString()}, {"login", o.value("login").toVariant()},
         {"server", settings().server}, {"path", settings().path},
@@ -535,6 +746,47 @@ bool BotController::deleteProfile(const QString &file)
     if (ok)
         emit profilesChanged(listProfiles());
     return ok;
+}
+
+bool BotController::saveProfile(const QVariantMap &creds, const QString &saveNameIn)
+{
+    const long long login = creds.value("login").toLongLong();
+    const QString server = creds.value("server").toString().trimmed();
+    QString password = creds.value("password").toString();
+    if (password.isEmpty())
+        password = settings().password;
+
+    if (login <= 0 || server.isEmpty()) {
+        emit configError(QStringLiteral("Login dan server wajib diisi untuk menyimpan profil."));
+        return false;
+    }
+
+    QString name = saveNameIn.trimmed();
+    if (name.isEmpty()) {
+        QString srvClean = server;
+        srvClean.replace(QRegularExpression("[^a-zA-Z0-9_-]"), "_");
+        name = QStringLiteral("%1_%2").arg(srvClean, QString::number(login));
+    }
+
+    QDir().mkpath(nativeDir());
+    QJsonObject o;
+    o["name"] = name;
+    o["login"] = static_cast<qlonglong>(login);
+    o["server"] = server;
+    o["path"] = creds.value("path").toString();
+    if (!password.isEmpty())
+        o["password"] = SecureStore::encrypt(password);
+
+    QFile f(nativeDir() + "/" + safeFileName(name) + ".json");
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+        emit configError(QStringLiteral("Gagal menyimpan file profil: %1").arg(f.errorString()));
+        return false;
+    }
+    f.write(QJsonDocument(o).toJson(QJsonDocument::Indented));
+    f.close();
+    emit logMessage(QStringLiteral("[PROFIL] Profil Native '%1' berhasil disimpan.").arg(name));
+    emit profilesChanged(listProfiles());
+    return true;
 }
 
 bool BotController::loginAndConnect(const QVariantMap &creds, const QString &saveName)
@@ -556,22 +808,16 @@ bool BotController::loginAndConnect(const QVariantMap &creds, const QString &sav
     settings().path = d.value("path").toString();
     setBackend(QStringLiteral("native"));
 
-    const QString name = saveName.trimmed();
-    if (!name.isEmpty()) {
-        QDir().mkpath(nativeDir());
-        QJsonObject o;
-        o["name"] = name;
-        o["login"] = static_cast<qlonglong>(login);
-        o["server"] = server;
-        o["path"] = settings().path;
-        o["password"] = SecureStore::encrypt(password);
-        QFile f(nativeDir() + "/" + safeFileName(name) + ".json");
-        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-            f.write(QJsonDocument(o).toJson(QJsonDocument::Indented));
-            f.close();
-            emit profilesChanged(listProfiles());
-        }
+    // PASTIKAN OTOMATIS TERSIMPAN SEBUAH FILE:
+    // Jika saveName kosong, otomatis buatkan nama profil dari server dan nomor login.
+    QString name = saveName.trimmed();
+    if (name.isEmpty()) {
+        QString srvClean = server;
+        srvClean.replace(QRegularExpression("[^a-zA-Z0-9_-]"), "_");
+        name = QStringLiteral("%1_%2").arg(srvClean, QString::number(login));
     }
+    saveProfile(d, name);
+
     connectBot();
     return true;
 }
@@ -580,8 +826,74 @@ QString BotController::scriptTemplate() { return QString::fromUtf8(kScriptTempla
 
 QVariantMap BotController::validateScript(const QString &source)
 {
-    const ScriptValidation v = ScriptStrategy::validate(source);
-    return {{"ok", v.ok}, {"line", v.line}, {"message", v.message}};
+    if (source.trimmed().isEmpty()) {
+        return {{"ok", false}, {"line", 1}, {"message", QStringLiteral("Skrip tidak boleh kosong.")}};
+    }
+    int parens = 0, braces = 0, brackets = 0;
+    int line = 1;
+    bool inLineComment = false;
+    bool inBlockComment = false;
+    QChar inStringQuote;
+
+    for (int i = 0; i < source.length(); ++i) {
+        QChar c = source[i];
+        QChar next = (i + 1 < source.length()) ? source[i + 1] : QChar();
+
+        if (c == QLatin1Char('\n')) {
+            line++;
+            inLineComment = false;
+            continue;
+        }
+
+        if (inLineComment) continue;
+
+        if (inBlockComment) {
+            if (c == QLatin1Char('*') && next == QLatin1Char('/')) {
+                inBlockComment = false;
+                ++i;
+            }
+            continue;
+        }
+
+        if (inStringQuote != QChar()) {
+            if (c == QLatin1Char('\\')) {
+                ++i; // skip escaped character
+            } else if (c == inStringQuote) {
+                inStringQuote = QChar();
+            }
+            continue;
+        }
+
+        // Cek awalan komentar
+        if (c == QLatin1Char('#') || (c == QLatin1Char('/') && next == QLatin1Char('/'))) {
+            inLineComment = true;
+            if (c == QLatin1Char('/')) ++i;
+            continue;
+        }
+        if (c == QLatin1Char('/') && next == QLatin1Char('*')) {
+            inBlockComment = true;
+            ++i;
+            continue;
+        }
+
+        // Cek string quote
+        if (c == QLatin1Char('"') || c == QLatin1Char('\'') || c == QLatin1Char('`')) {
+            inStringQuote = c;
+            continue;
+        }
+
+        if (c == QLatin1Char('(')) parens++;
+        else if (c == QLatin1Char(')')) { if (--parens < 0) return {{"ok", false}, {"line", line}, {"message", QStringLiteral("Tutup kurung ')' tanpa pembuka")}}; }
+        else if (c == QLatin1Char('{')) braces++;
+        else if (c == QLatin1Char('}')) { if (--braces < 0) return {{"ok", false}, {"line", line}, {"message", QStringLiteral("Tutup kurawal '}' tanpa pembuka")}}; }
+        else if (c == QLatin1Char('[')) brackets++;
+        else if (c == QLatin1Char(']')) { if (--brackets < 0) return {{"ok", false}, {"line", line}, {"message", QStringLiteral("Kurung siku '[' tanpa pembuka")}}; }
+    }
+    if (parens > 0) return {{"ok", false}, {"line", line}, {"message", QStringLiteral("Kurung '(' belum ditutup")}};
+    if (braces > 0) return {{"ok", false}, {"line", line}, {"message", QStringLiteral("Kurawal '{' belum ditutup")}};
+    if (brackets > 0) return {{"ok", false}, {"line", line}, {"message", QStringLiteral("Kurung siku '[' belum ditutup")}};
+
+    return {{"ok", true}, {"line", 0}, {"message", QStringLiteral("Sintaks valid")}};
 }
 
 void BotController::setScript(const QString &source)
@@ -589,37 +901,82 @@ void BotController::setScript(const QString &source)
     settings().scriptSource = source;
     settings().strategyName = QStringLiteral("custom_script");
     ConfigStore::save(settings());
-    emit logMessage(QStringLiteral("[UI] Skrip disimpan. Aktif saat (re)connect / mulai trading."));
+    if (m_pyWorker)
+        m_pyWorker->reloadStrategy();
+    emit logMessage(QStringLiteral("[SKRIP] Skrip strategi disimpan & diperbarui di runtime engine."));
 }
 
-QString BotController::currentScript() { return settings().scriptSource; }
+QString BotController::currentScript()
+{
+    QString src = settings().scriptSource;
+    if (src.trimmed().isEmpty()) {
+        src = scriptTemplate();
+    }
+    return src;
+}
 
-// ---------- Manajemen file skrip (folder "scripts", *.js) ----------
+// ---------- Manajemen file skrip (folder "scripts", *.js / *.py) ----------
 namespace {
-QString scriptsDir() { return QStringLiteral("scripts"); }
+QString scriptsDir()
+{
+    // Prioritas 1: folder scripts di samping direktori aplikasi (dist/portable standalone)
+    const QString appScripts = QCoreApplication::applicationDirPath() + QStringLiteral("/scripts");
+    if (QDir(appScripts).exists())
+        return appScripts;
+    // Prioritas 2: folder scripts di current working directory
+    if (QDir(QStringLiteral("scripts")).exists())
+        return QStringLiteral("scripts");
+    // Prioritas 3: Lingkungan development junction C:/XaviqCpp/scripts
+    if (QDir(QStringLiteral("C:/XaviqCpp/scripts")).exists())
+        return QStringLiteral("C:/XaviqCpp/scripts");
+    // Prioritas 4: folder cpp/scripts (saat dijalankan dari root repositori)
+    if (QDir(QStringLiteral("cpp/scripts")).exists())
+        return QStringLiteral("cpp/scripts");
+    return QStringLiteral("scripts");
+}
 } // namespace
 
 QVariantList BotController::listScripts()
 {
     QVariantList out;
-    QDir dir(scriptsDir());
-    const QStringList files = dir.entryList({"*.js"}, QDir::Files, QDir::Name);
-    for (const QString &fn : files) {
-        QString base = fn;
-        base.chop(3); // buang ".js"
-        if (base.compare("README", Qt::CaseInsensitive) == 0)
-            continue;
-        out << base;
-    }
+    QSet<QString> seen;
+    auto scan = [&](const QString &dirPath, const QString &ext) {
+        QDir dir(dirPath);
+        if (!dir.exists()) return;
+        const QStringList files = dir.entryList({QStringLiteral("*.") + ext}, QDir::Files, QDir::Name);
+        for (const QString &fn : files) {
+            QString base = fn;
+            base.chop(ext.length() + 1);
+            if (base.compare(QStringLiteral("README"), Qt::CaseInsensitive) == 0 || base.startsWith(QLatin1String("__")))
+                continue;
+            if (!seen.contains(base)) {
+                seen.insert(base);
+                out << base;
+            }
+        }
+    };
+    scan(scriptsDir(), QStringLiteral("js"));
+    scan(scriptsDir(), QStringLiteral("py"));
+    scan(QStringLiteral("py_backend/strategies/scripts"), QStringLiteral("py"));
+    scan(QStringLiteral("strategies/scripts"), QStringLiteral("py"));
     return out;
 }
 
 QString BotController::loadScript(const QString &name)
 {
-    QFile f(scriptsDir() + "/" + safeFileName(name) + ".js");
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
-        return {};
-    return QString::fromUtf8(f.readAll());
+    const QString base = safeFileName(name);
+    const QStringList paths = {
+        QStringLiteral("py_backend/strategies/scripts/") + base + QStringLiteral(".py"),
+        QStringLiteral("strategies/scripts/") + base + QStringLiteral(".py"),
+        scriptsDir() + "/" + base + QStringLiteral(".py"),
+        scriptsDir() + "/" + base + QStringLiteral(".js")
+    };
+    for (const QString &p : paths) {
+        QFile f(p);
+        if (f.open(QIODevice::ReadOnly | QIODevice::Text))
+            return QString::fromUtf8(f.readAll());
+    }
+    return {};
 }
 
 QString BotController::loadScriptFile(const QString &url)
@@ -636,23 +993,68 @@ bool BotController::saveScript(const QString &name, const QString &source)
     if (n.isEmpty())
         return false;
     QDir().mkpath(scriptsDir());
-    QFile f(scriptsDir() + "/" + safeFileName(n) + ".js");
+    const QString base = safeFileName(n);
+    const bool isPy = source.contains(QStringLiteral("def on_bar")) || source.contains(QStringLiteral("import "));
+    const QString ext = isPy ? QStringLiteral(".py") : QStringLiteral(".js");
+    QFile f(scriptsDir() + "/" + base + ext);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
         return false;
     f.write(source.toUtf8());
-    emit logMessage(QStringLiteral("[UI] Skrip '%1' disimpan ke folder scripts.").arg(n));
+    f.close();
+
+    // Jika skrip Python, salin juga ke py_backend/strategies/scripts/ bila foldernya ada
+    if (isPy) {
+        const QString pyDir = QStringLiteral("py_backend/strategies/scripts");
+        if (QDir(pyDir).exists()) {
+            QFile fPy(pyDir + "/" + base + QStringLiteral(".py"));
+            if (fPy.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+                fPy.write(source.toUtf8());
+                fPy.close();
+            }
+        }
+    }
+
+    emit logMessage(QStringLiteral("[SKRIP] Skrip '%1' berhasil disimpan.").arg(n));
     return true;
+}
+
+bool BotController::deleteScript(const QString &name)
+{
+    const QString n = name.trimmed();
+    if (n.isEmpty())
+        return false;
+    const QString base = safeFileName(n);
+    bool ok = false;
+    QFile fJs(scriptsDir() + "/" + base + QStringLiteral(".js"));
+    if (fJs.exists()) ok |= fJs.remove();
+    QFile fPy(scriptsDir() + "/" + base + QStringLiteral(".py"));
+    if (fPy.exists()) ok |= fPy.remove();
+    QFile fPyBack(QStringLiteral("py_backend/strategies/scripts/") + base + QStringLiteral(".py"));
+    if (fPyBack.exists()) ok |= fPyBack.remove();
+    if (ok)
+        emit logMessage(QStringLiteral("[SKRIP] Skrip '%1' telah dihapus.").arg(n));
+    return ok;
 }
 
 void BotController::onJournal(const QVariantMap &entryIn)
 {
     QVariantMap entry = entryIn;
-    entry["time"] = QDateTime::currentDateTime().toString("HH:mm:ss");
+    if (!entry.contains("time") || entry.value("time").toString().isEmpty()) {
+        entry["time"] = QDateTime::currentDateTime().toString("HH:mm:ss");
+    }
     m_journal.append(entry);
     if (m_journal.size() > 1000)
         m_journal.removeFirst();
     emit journalEntry(entry);
     emit journalChanged();
+
+    const QString action = entry.value("action").toString();
+    const QString symbol = entry.value("symbol").toString();
+    const QString detail = entry.value("detail").toString();
+    const bool ok = entry.value("ok", true).toBool();
+    emit logMessage(QStringLiteral("[%1] %2 %3 — %4")
+                        .arg(ok ? QStringLiteral("JURNAL") : QStringLiteral("JURNAL DITOLAK"),
+                             action, symbol, detail));
 }
 
 void BotController::clearJournal()
@@ -695,7 +1097,7 @@ bool BotController::exportJournalCsv(const QString &pathIn)
            << (e.value("ok").toBool() ? "OK" : "GAGAL") << '\n';
     }
     f.close();
-    emit logMessage(QStringLiteral("[UI] Jurnal diekspor ke %1 (%2 baris).")
+    emit logMessage(QStringLiteral("[SISTEM] Jurnal diekspor ke %1 (%2 baris).")
                         .arg(path).arg(m_journal.size()));
     return true;
 }
@@ -734,7 +1136,7 @@ bool BotController::exportLogs(const QString &pathIn)
         ts << content;
     }
     out.close();
-    emit logMessage(QStringLiteral("[UI] Log diekspor ke %1.").arg(path));
+    emit logMessage(QStringLiteral("[SISTEM] Log berhasil diekspor ke %1.").arg(path));
     return true;
 }
 
@@ -864,6 +1266,7 @@ QString BotController::settingsTemplate()
 
 void BotController::onAccount(const QVariantMap &a)
 {
+    m_accountLogin = a.value("login").toLongLong();
     m_balance = a.value("balance").toDouble();
     m_equity = a.value("equity").toDouble();
     m_margin = a.value("margin").toDouble();
@@ -873,7 +1276,11 @@ void BotController::onAccount(const QVariantMap &a)
     m_accountType = a.value("account_type").toString();
     m_accountServer = a.value("server").toString();
     m_serverConnected = a.value("server_connected").toBool();
-    m_tradeAllowed = a.value("trade_allowed").toBool();
+    m_expertsTradeAllowed = a.value("experts_trade_allowed", true).toBool();
+    m_mcpTradeAllowed = a.value("mcp_trade_allowed", true).toBool();
+    m_accountTradeAllowed = a.value("account_trade_allowed", true).toBool();
+    const bool termTrade = a.value("trade_allowed").toBool();
+    m_tradeAllowed = termTrade && !m_tradeBlocked;
     emit accountChanged();
 }
 
@@ -904,18 +1311,53 @@ void BotController::onAutoDisabled(const QString &reason)
 {
     setTradingState(false);
     setStatus(QStringLiteral("Terhubung"));
-    emit logMessage(reason);
+    emit logMessage(QStringLiteral("[RISIKO] Auto-trading dihentikan: %1").arg(reason));
+
+    QVariantMap jEntry;
+    jEntry["symbol"] = settings().symbol;
+    jEntry["action"] = QStringLiteral("STOP");
+    jEntry["ok"] = false;
+    jEntry["detail"] = QStringLiteral("Proteksi risiko: %1").arg(reason);
+    onJournal(jEntry);
+}
+void BotController::onOrderFeedback(bool ok, const QString &message)
+{
+    if (ok) {
+        if (m_tradeBlocked) {
+            m_tradeBlocked = false;
+            m_tradeRejectReason.clear();
+            emit tradeBlockedChanged();
+            emit accountChanged();
+        }
+        emit logMessage(QStringLiteral("[ORDER] Sukses: %1").arg(message));
+    } else {
+        emit logMessage(QStringLiteral("[ORDER] Ditolak: %1").arg(message));
+        const QString lower = message.toLower();
+        if (lower.contains("trading is not permitted") || lower.contains("trade is disabled")
+            || lower.contains("autotrading disabled") || lower.contains("investor")) {
+            m_tradeBlocked = true;
+            m_tradeRejectReason = message;
+            m_tradeAllowed = false;
+            emit tradeBlockedChanged();
+            emit accountChanged();
+        }
+        emit configError(message);
+    }
 }
 void BotController::onWorkerConnected(bool connected)
 {
     setConnectedState(connected);
     if (connected) {
         setStatus(QStringLiteral("Terhubung"));
+        if (settings().backend.compare("native", Qt::CaseInsensitive) == 0) {
+            emit logMessage(QStringLiteral("[MT5] Berhasil terhubung ke terminal MetaTrader 5."));
+        } else {
+            emit logMessage(QStringLiteral("[MT5] Berhasil terhubung ke MCP MetaTrader 5."));
+        }
         // Auto-save rahasia MCP agar API key termuat otomatis saat startup berikutnya.
-        if (settings().backend.compare("mcp", Qt::CaseInsensitive) == 0
-            && !settings().mcpApiKey.isEmpty()) {
+        if (!settings().mcpApiKey.isEmpty()) {
             if (ConfigStore::saveMcpSecret(settings()))
-                emit logMessage(QStringLiteral("[UI] API Key MCP disimpan (mcp_secret.json) untuk sesi berikutnya."));
+                emit logMessage(QStringLiteral("[MT5] Kunci sesi MT5 tersimpan untuk sesi berikutnya."));
         }
     }
 }
@@ -924,23 +1366,315 @@ void BotController::onWorkerChartSymbol(const QString &symbol)
     m_chartSymbol = symbol;
     emit chartSymbolChanged(symbol);
 }
+void BotController::onWorkerTimeframe(const QString &timeframe)
+{
+    const QString clean = timeframe.trimmed().toUpper();
+    if (clean.isEmpty() || clean == settings().timeframeStr)
+        return;
+    settings().timeframeStr = clean;
+    emit timeframeChanged(clean);
+}
 void BotController::onWorkerStopped()
 {
-    if (m_thread) {
-        m_thread->quit();
-        m_thread->wait(3000);
-        m_worker->deleteLater();
-        m_thread->deleteLater();
-        m_thread = nullptr;
-        m_worker = nullptr;
+    if (m_pyWorker) {
+        m_pyWorker->stopBridge();
+        m_pyWorker->deleteLater();
+        m_pyWorker = nullptr;
     }
-    delete m_engine;
-    m_engine = nullptr;
-    if (m_ownBackend)
-        delete m_backend;
-    m_backend = nullptr;
-    m_ownBackend = false;
     setConnectedState(false);
     setTradingState(false);
     setStatus(QStringLiteral("Terputus"));
+}
+
+static QVariantList toVariantPoints(const QVector<double> &series)
+{
+    QVariantList list;
+    list.reserve(series.size());
+    for (double v : series) {
+        if (ind::isNan(v))
+            list << QVariant();
+        else
+            list << v;
+    }
+    return list;
+}
+
+static double getLastValid(const QVector<double> &series)
+{
+    for (int i = series.size() - 1; i >= 0; --i) {
+        if (!ind::isNan(series[i]))
+            return series[i];
+    }
+    return 0.0;
+}
+
+QVariantList BotController::availableIndicators() const
+{
+    QVariantList list;
+
+    auto addInd = [&](const QString &id, const QString &name, const QString &cat,
+                      const QString &color, const QString &style, const QString &type,
+                      const QString &desc, bool def = false) {
+        QVariantMap m;
+        m["id"] = id;
+        m["name"] = name;
+        m["category"] = cat;
+        m["color"] = color;
+        m["style"] = style; // "line", "dots", "dash"
+        m["type"] = type;   // "overlay" atau "subchart"
+        m["description"] = desc;
+        m["isDefault"] = def;
+        list << m;
+    };
+
+    // 1. Moving Averages (Overlay)
+    addInd("ema_9", "EMA 9 (Fast Scalper)", "Moving Averages", "#00D2D3", "line", "overlay",
+           "Exponential Moving Average periode 9 untuk deteksi momentum kilat", true);
+    addInd("ema_21", "EMA 21 (Trend Confirmation)", "Moving Averages", "#FF9F43", "line", "overlay",
+           "Exponential Moving Average periode 21 untuk konfirmasi arah tren", true);
+    addInd("sma_50", "SMA 50 (Mid-term Trend)", "Moving Averages", "#54A0FF", "line", "overlay",
+           "Simple Moving Average periode 50 untuk filter tren menengah", false);
+    addInd("sma_200", "SMA 200 (Major Trend)", "Moving Averages", "#EE5253", "line", "overlay",
+           "Simple Moving Average periode 200 garis batas tren utama institusional", false);
+    addInd("wma_20", "WMA 20 (Weighted)", "Moving Averages", "#F368E0", "line", "overlay",
+           "Weighted Moving Average periode 20 memberi bobot lilin terbaru", false);
+
+    // 2. Saluran & Volatilitas (Overlay)
+    addInd("bbands", "Bollinger Bands (20, 2)", "Saluran & Volatilitas", "#10B981", "line", "overlay",
+           "Bollinger Bands periode 20 deviasi 2.0 (Upper, Mid, Lower)", false);
+    addInd("supertrend", "SuperTrend (10, 3)", "Saluran & Volatilitas", "#2ECC71", "line", "overlay",
+           "SuperTrend ATR 10 Multiplier 3 (Hijau Bullish / Merah Bearish)", false);
+    addInd("donchian", "Donchian Channel (20)", "Saluran & Volatilitas", "#F59E0B", "line", "overlay",
+           "Donchian 20-bar breakout channel harga tertinggi & terendah", false);
+    addInd("ichimoku", "Ichimoku Cloud (9, 26, 52)", "Saluran & Volatilitas", "#0984E3", "line", "overlay",
+           "Ichimoku Kinko Hyo: Tenkan-sen & Kijun-sen cloud baseline", false);
+
+    // 3. Level & Price Action (Overlay)
+    addInd("psar", "Parabolic SAR (0.02, 0.2)", "Level & Price Action", "#FD79A8", "dots", "overlay",
+           "Parabolic Stop and Reverse dot-points trailing & reversal", false);
+    addInd("vwap", "VWAP (14)", "Level & Price Action", "#A29BFE", "line", "overlay",
+           "Volume Weighted Average Price rata-rata tertimbang volume", false);
+    addInd("pivots", "Pivot Points (Classic)", "Level & Price Action", "#F1C40F", "dash", "overlay",
+           "Level Pivot, Resistance 1/2, Support 1/2 harian", false);
+
+    // 4. Osilator (Sub-Window Bawah)
+    addInd("rsi", "RSI 14 (Relative Strength)", "Osilator", "#9B59B6", "line", "subchart",
+           "RSI 14 dengan batas momentum Overbought 70 & Oversold 30", false);
+    addInd("macd", "MACD (12, 26, 9)", "Osilator", "#00CEC9", "line", "subchart",
+           "MACD garis sinyal & histogram pembalikan momentum", false);
+    addInd("stoch", "Stochastic (14, 3, 3)", "Osilator", "#E17055", "line", "subchart",
+           "Stochastic Oscillator %K & %D momentum jenuh jual/beli", false);
+    addInd("atr", "ATR 14 (Volatilitas)", "Osilator", "#6C5CE7", "line", "subchart",
+           "Average True Range mengukur volatilitas pergerakan harga dalam poin", false);
+
+    return list;
+}
+
+QVariantList BotController::computeOverlays(const QVariantList &candles, const QStringList &activeIds) const
+{
+    QVariantList overlays;
+    if (candles.size() < 2 || activeIds.isEmpty())
+        return overlays;
+
+    const int n = candles.size();
+    QVector<double> open, high, low, close, volume;
+    open.reserve(n);
+    high.reserve(n);
+    low.reserve(n);
+    close.reserve(n);
+    volume.reserve(n);
+
+    for (const QVariant &cv : candles) {
+        const QVariantMap m = cv.toMap();
+        open << m.value("o").toDouble();
+        high << m.value("h").toDouble();
+        low << m.value("l").toDouble();
+        close << m.value("c").toDouble();
+        volume << m.value("v").toDouble();
+    }
+
+    auto makeOverlay = [](const QString &id, const QString &name, const QString &color,
+                          const QString &style, const QString &type, const QVector<double> &series,
+                          const QString &panel = QString()) {
+        QVariantMap ov;
+        ov["id"] = id;
+        ov["name"] = name;
+        ov["color"] = color;
+        ov["style"] = style;
+        ov["type"] = type;
+        ov["panel"] = panel.isEmpty() ? id : panel;
+        ov["lastValue"] = getLastValid(series);
+        ov["points"] = toVariantPoints(series);
+        return ov;
+    };
+
+    for (const QString &id : activeIds) {
+        if (id == "ema_9") {
+            overlays << makeOverlay("ema_9", "EMA 9", "#00D2D3", "line", "overlay", ind::ema(close, 9));
+        } else if (id == "ema_21") {
+            overlays << makeOverlay("ema_21", "EMA 21", "#FF9F43", "line", "overlay", ind::ema(close, 21));
+        } else if (id == "sma_50") {
+            overlays << makeOverlay("sma_50", "SMA 50", "#54A0FF", "line", "overlay", ind::sma(close, 50));
+        } else if (id == "sma_200") {
+            overlays << makeOverlay("sma_200", "SMA 200", "#EE5253", "line", "overlay", ind::sma(close, 200));
+        } else if (id == "wma_20") {
+            overlays << makeOverlay("wma_20", "WMA 20", "#F368E0", "line", "overlay", ind::wma(close, 20));
+        } else if (id == "bbands") {
+            const ind::Band bb = ind::bbands(close, 20, 2.0);
+            overlays << makeOverlay("bb_upper", "BB Upper", "#10B981", "line", "overlay", bb.upper);
+            overlays << makeOverlay("bb_mid", "BB Mid", "#059669", "dash", "overlay", bb.mid);
+            overlays << makeOverlay("bb_lower", "BB Lower", "#10B981", "line", "overlay", bb.lower);
+        } else if (id == "supertrend") {
+            const ind::SuperTrendResult st = ind::supertrend(high, low, close, 10, 3.0);
+            QVariantMap ov = makeOverlay("supertrend", "SuperTrend", "#2ECC71", "line", "overlay", st.line);
+            QVariantList dirList;
+            dirList.reserve(st.direction.size());
+            for (int d : st.direction)
+                dirList << d;
+            ov["directions"] = dirList;
+            overlays << ov;
+        } else if (id == "donchian") {
+            const ind::Band dc = ind::donchian(high, low, 20);
+            overlays << makeOverlay("dc_upper", "Donchian Up", "#F59E0B", "line", "overlay", dc.upper);
+            overlays << makeOverlay("dc_lower", "Donchian Low", "#F59E0B", "line", "overlay", dc.lower);
+        } else if (id == "ichimoku") {
+            const ind::IchimokuResult ic = ind::ichimoku(high, low, close, 9, 26, 52);
+            overlays << makeOverlay("ichi_tenkan", "Tenkan-sen", "#E84393", "line", "overlay", ic.tenkan);
+            overlays << makeOverlay("ichi_kijun", "Kijun-sen", "#0984E3", "line", "overlay", ic.kijun);
+        } else if (id == "psar") {
+            overlays << makeOverlay("psar", "Parabolic SAR", "#FD79A8", "dots", "overlay", ind::parabolicSar(high, low, 0.02, 0.2));
+        } else if (id == "vwap") {
+            overlays << makeOverlay("vwap", "VWAP", "#A29BFE", "line", "overlay", ind::vwap(high, low, close, volume, 14));
+        } else if (id == "pivots") {
+            const ind::Pivots pv = ind::pivotPoints(high, low, close);
+            if (pv.valid) {
+                QVector<double> sP(n, pv.pivot), sR1(n, pv.r1), sS1(n, pv.s1);
+                overlays << makeOverlay("pivot_p", "Pivot", "#F1C40F", "dash", "overlay", sP);
+                overlays << makeOverlay("pivot_r1", "R1", "#E74C3C", "dash", "overlay", sR1);
+                overlays << makeOverlay("pivot_s1", "S1", "#2ECC71", "dash", "overlay", sS1);
+            }
+        } else if (id == "rsi") {
+            overlays << makeOverlay("rsi", "RSI 14", "#9B59B6", "line", "subchart", ind::rsi(close, 14), "rsi");
+        } else if (id == "macd") {
+            const ind::MacdResult md = ind::macd(close, 12, 26, 9);
+            overlays << makeOverlay("macd_line", "MACD", "#00CEC9", "line", "subchart", md.macd, "macd");
+            overlays << makeOverlay("macd_sig", "Signal", "#FF7675", "line", "subchart", md.signal, "macd");
+            QVariantMap histOv = makeOverlay("macd_hist", "Hist", "#2ECC71", "histogram", "subchart", md.hist, "macd");
+            overlays << histOv;
+        } else if (id == "stoch") {
+            const ind::StochResult sc = ind::stochastic(high, low, close, 14, 3, 3);
+            overlays << makeOverlay("stoch_k", "%K", "#E17055", "line", "subchart", sc.k, "stoch");
+            overlays << makeOverlay("stoch_d", "%D", "#FDCB6E", "dash", "subchart", sc.d, "stoch");
+        } else if (id == "atr") {
+            overlays << makeOverlay("atr", "ATR 14", "#6C5CE7", "line", "subchart", ind::atr(high, low, close, 14), "atr");
+        }
+    }
+
+    return overlays;
+}
+
+QVariantMap BotController::verifyAlgoTrading(const QString &symbolIn)
+{
+    QVariantMap res;
+    if (!m_connected) {
+        res["status"] = QStringLiteral("OFFLINE");
+        res["ok"] = false;
+        res["connected"] = false;
+        res["summary"] = QStringLiteral("Bot belum terhubung ke terminal MT5.");
+        res["issues"] = QStringList{QStringLiteral("Koneksi ke MT5 belum aktif.")};
+        res["solutions"] = QStringList{QStringLiteral("Buka tab Login dan klik tombol 'Login & Connect'.")};
+        return res;
+    }
+
+    QString sym = symbolIn.trimmed();
+    if (sym.isEmpty())
+        sym = m_chartSymbol.isEmpty() ? settings().symbol : m_chartSymbol;
+    if (sym.isEmpty())
+        sym = QStringLiteral("EURUSDm");
+
+    if (m_pyWorker) {
+        m_pyWorker->wakeWorker();
+    }
+
+    QStringList issues;
+    QStringList solutions;
+    bool ok = true;
+
+    // 1. Cek koneksi server broker
+    if (!m_serverConnected) {
+        ok = false;
+        issues << QStringLiteral("Terminal MT5 belum tersambung ke server broker (%1).")
+                      .arg(m_accountServer.isEmpty() ? QStringLiteral("Exness") : m_accountServer);
+        solutions << QStringLiteral("Pastikan koneksi internet aktif dan terminal MT5 sudah login ke broker (status koneksi kanan bawah MT5 tidak 0/0 kb).");
+    }
+
+    // 2. Cek saklar Algo Trading di toolbar MT5
+    if (!m_expertsTradeAllowed) {
+        ok = false;
+        issues << QStringLiteral("Tombol 'Algo Trading' di toolbar MT5 NONAKTIF (experts_trade_allowed=false).");
+        solutions << QStringLiteral("Klik tombol 'Algo Trading' di toolbar atas MT5 sampai berwarna HIJAU (atau tekan shortcut Ctrl+E).");
+    }
+
+    // 3. Cek server MCP
+    if (!m_mcpTradeAllowed) {
+        ok = false;
+        issues << QStringLiteral("Server MCP MT5 belum mengizinkan eksekusi trading (mcp_trade_allowed=false).");
+        solutions << QStringLiteral("Buka MT5 -> Tools -> Options -> tab MCP -> pastikan 'Enable internal server' aktif.");
+    }
+
+    // 4. Cek hak trading akun (Master vs Investor / Read-Only)
+    if (!m_accountTradeAllowed) {
+        ok = false;
+        issues << QStringLiteral("Akun berstatus Read-Only / Investor Password (trade_allowed=false).");
+        solutions << QStringLiteral("Buka MT5 -> File -> Login to Trade Account -> Masukkan Master Trading Password (bukan investor password) & centang 'Save password'.");
+    }
+
+    // 5. Cek riwayat penolakan terakhir (jika ada order yang ditolak terminal)
+    if (m_tradeBlocked) {
+        ok = false;
+        issues << QStringLiteral("Order sebelumnya ditolak terminal: %1").arg(m_tradeRejectReason);
+        solutions << QStringLiteral("Periksa tab Journal di MT5 untuk kode error lengkap broker. Jika sudah diperbaiki di MT5, klik 'Reset Status Tolak'.");
+    }
+
+    res["ok"] = ok;
+    res["connected"] = true;
+    res["server_connected"] = m_serverConnected;
+    res["experts_trade_allowed"] = m_expertsTradeAllowed;
+    res["mcp_trade_allowed"] = m_mcpTradeAllowed;
+    res["account_trade_allowed"] = m_accountTradeAllowed && !m_tradeBlocked;
+    res["login"] = m_accountLogin;
+    res["server"] = m_accountServer;
+    res["account_type"] = m_accountType;
+    res["symbol"] = sym;
+    res["symbol_valid"] = true;
+    res["trade_blocked"] = m_tradeBlocked;
+    res["reject_reason"] = m_tradeRejectReason;
+
+    if (ok) {
+        res["status"] = QStringLiteral("OK");
+        res["summary"] = QStringLiteral("Semua izin aktif! Terminal MT5 siap menerima eksekusi order.");
+    } else if (m_tradeBlocked || !m_accountTradeAllowed) {
+        res["status"] = QStringLiteral("ERROR");
+        res["summary"] = QStringLiteral("Trading DITOLAK oleh terminal MT5 ('trading is not permitted').");
+    } else {
+        res["status"] = QStringLiteral("WARNING");
+        res["summary"] = QStringLiteral("Izin trading belum lengkap. Periksa panduan di bawah.");
+    }
+
+    res["issues"] = issues;
+    res["solutions"] = solutions;
+
+    return res;
+}
+
+void BotController::clearTradeRejection()
+{
+    m_tradeBlocked = false;
+    m_tradeRejectReason.clear();
+    m_tradeAllowed = m_serverConnected && m_expertsTradeAllowed && m_mcpTradeAllowed && m_accountTradeAllowed;
+    if (m_pyWorker)
+        m_pyWorker->wakeWorker();
+    emit tradeBlockedChanged();
+    emit accountChanged();
+    emit logMessage(QStringLiteral("[SISTEM] Status penolakan trading direset."));
 }

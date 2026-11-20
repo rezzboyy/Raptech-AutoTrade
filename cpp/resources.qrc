@@ -4,21 +4,22 @@
         <file>qml/Theme.qml</file>
         <file>qml/main.qml</file>
         <file>qml/AccountBar.qml</file>
+        <file>qml/SidebarControls.qml</file>
+        <file>qml/TradeHistoryGrid.qml</file>
+        <file>qml/OpenTradesGrid.qml</file>
+        <file>qml/WorkspaceArea.qml</file>
         <file>qml/CField.qml</file>
         <file>qml/CButton.qml</file>
         <file>qml/CCombo.qml</file>
         <file>qml/ThinScrollBar.qml</file>
         <file>qml/LoginPanel.qml</file>
-        <file>qml/ConfigPanel.qml</file>
         <file>qml/RiskConfigForm.qml</file>
-        <file>qml/ManualTradePanel.qml</file>
         <file>qml/ProgrammerPanel.qml</file>
-        <file>qml/StatsPanel.qml</file>
-        <file>qml/PositionsPanel.qml</file>
         <file>qml/LogPanel.qml</file>
         <file>qml/CandleChart.qml</file>
         <file>qml/EquityChart.qml</file>
-        <file>qml/JournalPanel.qml</file>
+        <file>qml/AlgoVerificationDialog.qml</file>
+        <file>qml/UpdateDialog.qml</file>
         <file>assets/login.svg</file>
         <file>assets/strategy.svg</file>
         <file>assets/bolt.svg</file>
@@ -33,10 +34,18 @@
         <file>assets/trash.svg</file>
         <file>assets/folder.svg</file>
         <file>assets/upload.svg</file>
+        <file>assets/download.svg</file>
         <file>assets/link-off.svg</file>
         <file>assets/moon.svg</file>
         <file>assets/sun.svg</file>
         <file>assets/close.svg</file>
         <file>assets/account.svg</file>
+        <file>assets/wallet.svg</file>
+        <file>assets/shield.svg</file>
+        <file>assets/eye.svg</file>
+        <file>assets/eye-off.svg</file>
+        <file>assets/layers.svg</file>
+        <file>assets/check.svg</file>
+        <file>assets/sliders.svg</file>
     </qresource>
 </RCC>

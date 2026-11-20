@@ -16,23 +16,27 @@ Rectangle {
     property var profileList: []
     property var mcpProfileList: []
     property string backendMode: bot ? bot.backend : "mcp"
+    property bool hasSavedPassword: false
     readonly property int ctrlHeight: 34
     readonly property int labelWidth: 92
 
     Component.onCompleted: {
         refreshProfiles()
         refreshMcpProfiles()
+        // Otomatis terisi dari profil tersimpan pertama bila ada
+        if (profileList.length > 0 && bot) {
+            root.fillFrom(bot.loadProfileFile(profileList[0].file))
+        }
         if (bot) {
             var mcpCfg = bot.getMcpConfig()
             if (mcpCfg.endpoint) endpointField.text = mcpCfg.endpoint
             if (mcpCfg.hasKey) apiKeyField.placeholderText = mcpCfg.keyPlaceholder
         }
-        // Default ke MCP (metode yang berfungsi di versi C++), Native tetap bisa dipilih.
-        if (!root.botConnected && backendMode !== "mcp") {
-            backendMode = "mcp"
-            if (bot) bot.setBackend("mcp")
-        }
-        backendBox.currentIndex = (backendMode === "mcp") ? 1 : 0
+        // Pertahankan mode koneksi yang sedang aktif atau dipilih pengguna
+        var currentMode = bot ? bot.backend : "mcp"
+        if (!currentMode) currentMode = "mcp"
+        backendMode = currentMode
+        backendBox.currentIndex = (currentMode === "native") ? 1 : 0
     }
 
     function refreshProfiles() {
@@ -53,9 +57,11 @@ Rectangle {
     function fillFrom(f) {
         if (f && f.login !== undefined) {
             loginField.text = String(f.login)
-            serverField.text = f.server
-            pathField.text = f.path
+            serverField.text = f.server || ""
+            pathField.text = f.path || ""
             passwordField.text = ""
+            root.hasSavedPassword = (f.hasPassword === true)
+            if (f.name) saveNameField.text = f.name
         }
     }
     function fillMcpFrom(f) {
@@ -90,9 +96,9 @@ Rectangle {
                     id: backendBox
                     Layout.preferredHeight: root.ctrlHeight
                     enabled: !root.botConnected
-                    model: ["Native (Library MetaTrader5)", "MCP (Server MT5)"]
+                    model: ["MCP (Server MT5) — Rekomendasi", "Native (Peluncur Terminal MT5)"]
                     onActivated: {
-                        var mode = (currentIndex === 1) ? "mcp" : "native"
+                        var mode = (currentIndex === 1) ? "native" : "mcp"
                         root.backendMode = mode
                         if (bot) bot.setBackend(mode)
                     }
@@ -113,7 +119,15 @@ Rectangle {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 6
-                        CCombo { id: profileBox; Layout.preferredHeight: root.ctrlHeight }
+                        CCombo {
+                            id: profileBox
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: root.ctrlHeight
+                            onActivated: {
+                                var p = root.profileList[currentIndex]
+                                if (p) root.fillFrom(bot.loadProfileFile(p.file))
+                            }
+                        }
                         CButton {
                             text: "Muat"; icon.source: "qrc:/assets/upload.svg"; icon.width: 13; icon.height: 13
                             Layout.preferredHeight: root.ctrlHeight
@@ -125,7 +139,25 @@ Rectangle {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 6
-                    CButton { text: "Pilih File..."; icon.source: "qrc:/assets/folder.svg"; icon.width: 13; icon.height: 13; Layout.fillWidth: true; Layout.preferredHeight: root.ctrlHeight; enabled: !root.botConnected; onClicked: fileDialog.open() }
+                    CButton {
+                        text: "Simpan Profil"
+                        icon.source: "qrc:/assets/save.svg"; icon.width: 13; icon.height: 13
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: root.ctrlHeight
+                        enabled: !root.botConnected
+                        onClicked: {
+                            var creds = {
+                                "login": parseInt(loginField.text || "0"),
+                                "password": passwordField.text,
+                                "server": serverField.text,
+                                "path": pathField.text
+                            }
+                            if (bot && bot.saveProfile(creds, saveNameField.text)) {
+                                root.refreshProfiles()
+                            }
+                        }
+                    }
+                    CButton { text: "Pilih File..."; icon.source: "qrc:/assets/folder.svg"; icon.width: 13; icon.height: 13; Layout.preferredHeight: root.ctrlHeight; enabled: !root.botConnected; onClicked: fileDialog.open() }
                     CButton {
                         text: "Hapus"; icon.source: "qrc:/assets/trash.svg"; icon.width: 13; icon.height: 13
                         Layout.preferredHeight: root.ctrlHeight
@@ -137,18 +169,65 @@ Rectangle {
                     Layout.fillWidth: true
                     columns: 2; rowSpacing: 6; columnSpacing: 8
                     Label { text: "Login"; color: Theme.textSecondary; Layout.preferredWidth: root.labelWidth }
-                    CField { id: loginField; Layout.preferredHeight: root.ctrlHeight; enabled: !root.botConnected; inputMethodHints: Qt.ImhDigitsOnly }
+                    CField { id: loginField; Layout.preferredHeight: root.ctrlHeight; enabled: !root.botConnected; inputMethodHints: Qt.ImhDigitsOnly; placeholderText: "Nomor akun MT5 (mis. 12345678)" }
                     Label { text: "Password"; color: Theme.textSecondary; Layout.preferredWidth: root.labelWidth }
-                    CField { id: passwordField; Layout.preferredHeight: root.ctrlHeight; enabled: !root.botConnected; echoMode: TextInput.Password; placeholderText: "kosongkan jika pakai profil" }
+                    CField {
+                        id: passwordField
+                        property bool showPassword: false
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: root.ctrlHeight
+                        enabled: !root.botConnected
+                        rightPadding: 32
+                        echoMode: showPassword ? TextInput.Normal : TextInput.Password
+                        placeholderText: root.hasSavedPassword ? "●●●●●●●● (tersimpan di profil)" : "masukkan password MT5"
+
+                        Item {
+                            anchors.right: parent.right
+                            anchors.rightMargin: 6
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 24
+                            height: 24
+
+                            Image {
+                                anchors.centerIn: parent
+                                source: passwordField.showPassword ? "qrc:/assets/eye-off.svg" : "qrc:/assets/eye.svg"
+                                sourceSize: Qt.size(16, 16)
+                                width: 16
+                                height: 16
+                                opacity: eyeMouse.containsMouse ? 1.0 : 0.65
+                            }
+
+                            MouseArea {
+                                id: eyeMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: passwordField.showPassword = !passwordField.showPassword
+                            }
+
+                            ToolTip.visible: eyeMouse.containsMouse
+                            ToolTip.text: passwordField.showPassword ? "Sembunyikan password" : "Buka / tampilkan password"
+                        }
+                    }
                     Label { text: "Server"; color: Theme.textSecondary; Layout.preferredWidth: root.labelWidth }
-                    CField { id: serverField; Layout.preferredHeight: root.ctrlHeight; enabled: !root.botConnected }
+                    CField { id: serverField; Layout.preferredHeight: root.ctrlHeight; enabled: !root.botConnected; placeholderText: "Server broker (mis. Exness-MT5Trial10)" }
                     Label { text: "Path (opsional)"; color: Theme.textSecondary; Layout.preferredWidth: root.labelWidth }
-                    CField { id: pathField; Layout.preferredHeight: root.ctrlHeight; enabled: !root.botConnected }
+                    CField { id: pathField; Layout.preferredHeight: root.ctrlHeight; enabled: !root.botConnected; placeholderText: "Path terminal64.exe (opsional)" }
                 }
-                Text {
+                Rectangle {
                     Layout.fillWidth: true
-                    wrapMode: Text.WordWrap; color: Theme.warn; font.pixelSize: 10; lineHeight: 1.15
-                    text: "Catatan: backend Native belum tersedia di versi C++ ini. Profil bisa disimpan, tetapi untuk connect gunakan metode MCP."
+                    implicitHeight: noteText.implicitHeight + 16
+                    color: Theme.surfaceAlt; radius: 6; border.color: Theme.divider
+                    RowLayout {
+                        anchors.fill: parent; anchors.margins: 8; spacing: 8
+                        Image { source: "qrc:/assets/shield.svg"; sourceSize.width: 14; sourceSize.height: 14 }
+                        Text {
+                            id: noteText
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap; color: Theme.textSecondary; font.pixelSize: 10; lineHeight: 1.2
+                            text: "Tips C++: Jika terminal MT5 Exness Anda sudah terbuka, gunakan metode 'MCP (Server MT5)' di atas untuk koneksi instan & aman tanpa membuka jendela MT5 baru dan tanpa perlu memasukkan password akun broker."
+                        }
+                    }
                 }
             }
 
@@ -191,7 +270,44 @@ Rectangle {
                     Label { text: "Endpoint"; color: Theme.textSecondary; Layout.preferredWidth: root.labelWidth }
                     CField { id: endpointField; Layout.preferredHeight: root.ctrlHeight; enabled: !root.botConnected; text: "http://127.0.0.1:22346/mcp" }
                     Label { text: "API Key"; color: Theme.textSecondary; Layout.preferredWidth: root.labelWidth }
-                    CField { id: apiKeyField; Layout.preferredHeight: root.ctrlHeight; enabled: !root.botConnected; echoMode: TextInput.Password; placeholderText: "kosongkan jika pakai profil" }
+                    CField {
+                        id: apiKeyField
+                        property bool showKey: false
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: root.ctrlHeight
+                        enabled: !root.botConnected
+                        rightPadding: 32
+                        echoMode: showKey ? TextInput.Normal : TextInput.Password
+                        placeholderText: "kosongkan jika pakai profil"
+
+                        Item {
+                            anchors.right: parent.right
+                            anchors.rightMargin: 6
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 24
+                            height: 24
+
+                            Image {
+                                anchors.centerIn: parent
+                                source: apiKeyField.showKey ? "qrc:/assets/eye-off.svg" : "qrc:/assets/eye.svg"
+                                sourceSize: Qt.size(16, 16)
+                                width: 16
+                                height: 16
+                                opacity: apiEyeMouse.containsMouse ? 1.0 : 0.65
+                            }
+
+                            MouseArea {
+                                id: apiEyeMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: apiKeyField.showKey = !apiKeyField.showKey
+                            }
+
+                            ToolTip.visible: apiEyeMouse.containsMouse
+                            ToolTip.text: apiKeyField.showKey ? "Sembunyikan API key" : "Buka / tampilkan API key"
+                        }
+                    }
                 }
                 Text {
                     Layout.fillWidth: true
@@ -272,7 +388,7 @@ Rectangle {
         function onMcpProfilesChanged(list) { root.refreshMcpProfiles() }
         function onBackendChanged(name) {
             root.backendMode = name
-            backendBox.currentIndex = (name === "mcp") ? 1 : 0
+            backendBox.currentIndex = (name === "native") ? 1 : 0
         }
     }
 }

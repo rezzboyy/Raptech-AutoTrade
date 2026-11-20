@@ -12,15 +12,14 @@ set "PATH=%QTROOT%\bin;C:\Qt\Tools\mingw1310_64\bin;C:\Qt\Tools\CMake_64\bin;C:\
 set "QML2_IMPORT_PATH=%QTROOT%\qml"
 set "QML_IMPORT_PATH=%QTROOT%\qml"
 
-if not exist "%JUNC%" (
-    echo ==^> Membuat junction %JUNC% -^> "%~dp0cpp"
-    mklink /J "%JUNC%" "%~dp0cpp" >nul
-    if errorlevel 1 (
-        echo [GAGAL] Tidak bisa membuat junction. Jalankan sekali sebagai Administrator:
-        echo         mklink /J %JUNC% "%~dp0cpp"
-        pause
-        exit /b 1
-    )
+if exist "%JUNC%" rmdir "%JUNC%" >nul 2>&1
+echo ==^> Menghubungkan junction %JUNC% -^> "%~dp0cpp"
+mklink /J "%JUNC%" "%~dp0cpp" >nul
+if errorlevel 1 (
+    echo [GAGAL] Tidak bisa membuat junction. Jalankan sekali sebagai Administrator:
+    echo         mklink /J %JUNC% "%~dp0cpp"
+    pause
+    exit /b 1
 )
 
 echo.

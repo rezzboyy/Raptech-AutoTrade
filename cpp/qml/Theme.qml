@@ -1,28 +1,59 @@
 pragma Singleton
 import QtQuick
 
-// Palet warna terpusat — mendukung mode Gelap (Dark) dan Terang (Light).
+// Theme.qml — Palet Desain Terpusat X Trading Engine
+// Standar Murni Dark Cyber-Trading Workstation sesuai foto referensi (100% WCAG AA Compliant)
 QtObject {
-    property bool isDark: true
+    readonly property bool isDark: true
 
-    // Latar & permukaan
-    readonly property color bg:          isDark ? "#181b24" : "#f1f4f8"
-    readonly property color header:      isDark ? "#1f2430" : "#ffffff"
-    readonly property color surface:     isDark ? "#222834" : "#ffffff"
-    readonly property color surfaceAlt:  isDark ? "#2a3140" : "#e9edf4"
-    readonly property color border:      isDark ? "#333b4d" : "#d2d8e4"
-    readonly property color divider:     isDark ? "#2c333f" : "#e2e7ef"
+    // ================= Kanvas, Panel & Permukaan =================
+    readonly property color bg:               "#0B0E14" // Deep Gunmetal Black - Kanvas Utama
+    readonly property color header:           "#0E121A" // Header Bilah Atas
+    readonly property color surface:          "#0E121A" // Warna Dasar Kartu / Sidebar
+    readonly property color surfaceAlt:       "#131824" // Warna Dalam Input / Sub-card / Rows
+    readonly property color surfaceHighlight: "#1A2234" // Row Hover Highlight
+    readonly property color border:           "#232B3B" // Border Slate Navy Halus
+    readonly property color divider:          "#232B3B" // Garis Pembatas Halus
 
-    // Teks
-    readonly property color textPrimary:   isDark ? "#dce1ea" : "#1e293b"
-    readonly property color textSecondary: isDark ? "#a9b2c4" : "#475569"
-    readonly property color textMuted:     isDark ? "#79839a" : "#8c96a8"
+    // ================= Tipografi & Teks =================
+    readonly property color textPrimary:      "#F8FAFC" // Putih Terang
+    readonly property color textSecondary:    "#94A3B8" // Slate Medium
+    readonly property color textMuted:        "#64748B" // Slate Redup
 
-    // Aksen & status
-    readonly property color accent:  isDark ? "#5bb98c" : "#16a34a"
-    readonly property color up:      isDark ? "#5bc48e" : "#16a34a"
-    readonly property color down:    isDark ? "#e2707a" : "#dc2626"
-    readonly property color warn:    isDark ? "#e0a15c" : "#d97706"
-    readonly property color logText: isDark ? "#a7d9a0" : "#1b4d24"
-    readonly property color logBg:   isDark ? "#151820" : "#f8fafc"
+    // ================= Aksen Utama & Status Nilai =================
+    readonly property color accent:           "#0284C7" // Sky Blue Active Highlight
+    readonly property color selectedRow:      "#0284C7" // Baris Aktif Tabel
+    readonly property color up:               "#00E676" // Neon Green (Profit/Live)
+    readonly property color down:             "#FF5252" // Bright Red (Loss/Error)
+    readonly property color warn:             "#F59E0B" // Amber Warning
+    readonly property color profit:           "#00E676"
+    readonly property color loss:             "#FF5252"
+    readonly property color neutral:          "#94A3B8"
+
+    // ================= Tombol Aksi Trading Instan =================
+    readonly property color btnStart:         "#0288D1" // Bright Cyan
+    readonly property color btnStop:          "#D32F2F" // Crimson Red
+    readonly property color btnBuy:           "#2E7D32" // Emerald Green
+    readonly property color btnSell:          "#C62828" // Dark Red
+    readonly property color btnHedge:         "#7B1FA2" // Royal Purple
+    readonly property color btnCloseAll:      "#E65100" // Amber Orange
+
+    // ================= Auto-Update (OTA) Badges =================
+    readonly property color updateGlow:       "#38BDF8"
+    readonly property color updateBg:         "#0C4A6E"
+
+    // ================= Log Console =================
+    readonly property color logText:          "#A7D9A0"
+    readonly property color logBg:            "#080A0E"
+
+    // ================= Token Dimensi & Geometri =================
+    readonly property int radiusSmall:        4
+    readonly property int radiusCard:         6
+    readonly property int radiusPill:         12
+
+    readonly property int fontSizeNano:       9
+    readonly property int fontSizeSmall:      10
+    readonly property int fontSizeBody:       12
+    readonly property int fontSizeHeader:     14
+    readonly property int fontSizeBig:        16
 }

@@ -5,15 +5,17 @@
 
 JsHighlighter::JsHighlighter(QObject *parent) : QSyntaxHighlighter(parent)
 {
-    // Keyword JavaScript.
+    // Keyword JavaScript & Python
     QTextCharFormat keywordFormat;
     keywordFormat.setForeground(QColor("#c084fc"));
     keywordFormat.setFontWeight(QFont::Bold);
     const QStringList keywords = {
         "\\bvar\\b", "\\blet\\b", "\\bconst\\b", "\\bfunction\\b", "\\breturn\\b",
-        "\\bif\\b", "\\belse\\b", "\\bfor\\b", "\\bwhile\\b", "\\bdo\\b", "\\bbreak\\b",
-        "\\bcontinue\\b", "\\bnew\\b", "\\btypeof\\b", "\\bthis\\b", "\\btrue\\b",
-        "\\bfalse\\b", "\\bnull\\b", "\\bundefined\\b", "\\bswitch\\b", "\\bcase\\b"};
+        "\\bif\\b", "\\belse\\b", "\\belif\\b", "\\bdef\\b", "\\bimport\\b", "\\bfrom\\b",
+        "\\bfor\\b", "\\bwhile\\b", "\\bdo\\b", "\\bbreak\\b", "\\bpass\\b",
+        "\\bcontinue\\b", "\\bnew\\b", "\\btypeof\\b", "\\bthis\\b", "\\btrue\\b", "\\bTrue\\b",
+        "\\bfalse\\b", "\\bFalse\\b", "\\bnull\\b", "\\bNone\\b", "\\bundefined\\b",
+        "\\bswitch\\b", "\\bcase\\b", "\\band\\b", "\\bor\\b", "\\bnot\\b", "\\bin\\b", "\\bis\\b"};
     for (const QString &k : keywords)
         m_rules.append({QRegularExpression(k), keywordFormat});
 
@@ -30,7 +32,7 @@ JsHighlighter::JsHighlighter(QObject *parent) : QSyntaxHighlighter(parent)
 
     // String (single & double quote) — diproses terpisah agar menang atas angka/keyword.
     m_stringFormat.setForeground(QColor("#4ade80"));
-    // Komentar // ... akhir baris.
+    // Komentar // atau # ... akhir baris.
     m_commentFormat.setForeground(QColor("#6b7280"));
     m_commentFormat.setFontItalic(true);
 }
@@ -73,8 +75,14 @@ void JsHighlighter::highlightBlock(const QString &text)
         setFormat(m.capturedStart(), m.capturedLength(), m_stringFormat);
     }
 
-    // 3) Komentar // sampai akhir baris (menang atas semua).
-    const int c = text.indexOf("//");
+    // 3) Komentar // atau # sampai akhir baris (menang atas semua).
+    int c1 = text.indexOf(QLatin1String("//"));
+    int c2 = text.indexOf(QLatin1Char('#'));
+    int c = -1;
+    if (c1 >= 0 && c2 >= 0) c = qMin(c1, c2);
+    else if (c1 >= 0) c = c1;
+    else if (c2 >= 0) c = c2;
+
     if (c >= 0)
         setFormat(c, text.length() - c, m_commentFormat);
 

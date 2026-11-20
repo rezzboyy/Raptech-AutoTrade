@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(XaviqTradingEngine VERSION 0.1 LANGUAGES CXX)
+project(XaviqTradingEngine VERSION 3.2.0 LANGUAGES CXX)
 
 # Resource Windows (ikon EXE). MinGW mengompilasi .rc via windres.
 if(WIN32)
@@ -19,24 +19,16 @@ find_package(Qt6 REQUIRED COMPONENTS Core Qml Quick QuickControls2 Network Test)
 
 qt_standard_project_setup()
 
-# ----- Pustaka inti (backend-agnostik, tanpa GUI) -----
-# Dipakai oleh executable GUI dan oleh test unit (QtTest).
+# ----- Pustaka inti (backend-agnostik, tanpa GUI langsung) -----
+# Mengelola settings, logging, indikator visual chart, serta IPC bridge ke backend Python.
 add_library(xaviq_core STATIC
     src/core/Logger.cpp
     src/core/Settings.cpp
     src/core/ConfigStore.cpp
     src/core/SecureStore.cpp
-    src/net/McpClient.cpp
-    src/backend/SymbolUtils.cpp
-    src/backend/McpParse.cpp
-    src/backend/McpBackend.cpp
     src/indicators/Indicators.cpp
-    src/strategy/Strategies.cpp
-    src/engine/TradeRules.cpp
-    src/engine/BotEngine.cpp
-    src/script/ScriptContext.cpp
-    src/script/ScriptStrategy.cpp
-    src/app/Worker.cpp
+    src/app/PyBridgeWorker.cpp
+    src/app/UpdateManager.cpp
     src/app/BotController.cpp
 )
 target_include_directories(xaviq_core PUBLIC src)

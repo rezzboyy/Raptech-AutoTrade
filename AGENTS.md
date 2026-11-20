@@ -9,11 +9,12 @@
 ## 1. Ringkasan Proyek
 
 **XAVIQ Trading Engine** = bot trading MetaTrader 5 (MT5).
-- **Mesin Utama (C++ / Qt 6.8.1)** di folder `cpp/`: GUI desktop C++ native, ringan (~45 MB RAM),
-  backend **MCP-only** (kebal versi MT5), Mode Programmer JavaScript (`QJSEngine`), standalone EXE (~94 MB).
-- **Arsip Python (PySide6)** di folder `legacy_python/`: implementasi referensi original (264 unit tests).
-- Fitur utama: auto-trading (strategi bawaan + **Mode Programmer**/skrip kustom JS),
-  order manual & pending, manajemen risiko & proteksi, chart candle & equity, statistik, jurnal aksi.
+- **Arsitektur Hybrid (Frontend C++ Native + Backend Engine Python)**:
+  - **GUI Frontend C++ Native (Qt 6.8.1 / MinGW 64-bit)** di `cpp/`: GUI desktop C++ native cepat, responsif (~45 MB RAM), QML terkompilasi, editor skrip.
+  - **Trading Engine Python** di `py_backend/` (dari sistem cadangan): menjalankan logika trading penuh (`BotEngine`), manajemen risiko, proteksi SL/TP virtual, trailing stop, strategi bawaan, serta skrip kustom Python (`strategies/scripts/`).
+  - **Koneksi MT5 Fleksibel**: Mendukung **Native MT5** (library resmi `MetaTrader5` IPC terminal langsung) serta **MCP** (Model Context Protocol HTTP JSON-RPC).
+  - **Jembatan IPC Berkecepatan Tinggi**: Menggunakan `PyBridgeWorker` (C++) dan `bridge_server.py` (Python) berbasis NDJSON stdio streaming, bebas konflik port dan otomatis mati rapi saat aplikasi ditutup.
+- Fitur utama: auto-trading, order manual & pending, manajemen risiko & proteksi, chart candle & equity, statistik, jurnal aksi.
 
 Lingkungan: **Windows Server/VPS**, akun **Exness** (MT5), akun uji = DEMO.
 
@@ -38,10 +39,10 @@ Lingkungan: **Windows Server/VPS**, akun **Exness** (MT5), akun uji = DEMO.
 
 - Shell: PowerShell/cmd di Windows.
 - **Build & Jalankan GUI C++ (DEV):** dobel-klik `run_cpp_dev.bat` (atau `powershell -ExecutionPolicy Bypass -File C:\XaviqCpp\build.ps1`).
-- **Jalankan 7 Test Suite C++:** dobel-klik `run_cpp_tests.bat` (atau `powershell -ExecutionPolicy Bypass -File C:\XaviqCpp\runtests.ps1`).
+- **Jalankan Test Suite C++:** dobel-klik `run_cpp_tests.bat` (atau `powershell -ExecutionPolicy Bypass -File C:\XaviqCpp\runtests.ps1`).
+- **Jalankan Test Suite Python:** `$env:PYTHONPATH="C:\Users\Administrator\Desktop\My Produk\Auto Trade\Bot Trading\py_backend"; pytest py_backend\tests`
 - **Smoke UI C++ (Offscreen):** `powershell -ExecutionPolicy Bypass -File C:\XaviqCpp\smoke.ps1` (offscreen, mode `--smoke`).
 - **Deploy Standalone C++:** `deploy_cpp.bat` (menghasilkan folder mandiri di `C:\XaviqCppDist\XAVIQTradingEngine\` dan verifikasi di PATH terisolasi).
-- **Uji Arsip Python (Legacy):** `legacy_python\run_tests.bat` (264 tests).
 
 ⚠️ **PENTING (Aturan Junction C++):**
 `qmlimportscanner` Qt GAGAL bila path build mengandung spasi (folder "Bot Trading").
@@ -54,34 +55,30 @@ Source code diedit di `Bot Trading\cpp\`, namun BUILD selalu dilakukan via junct
 
 ```
 run_cpp_dev.bat           # 1-Klik: Build dev + jalankan GUI C++
-run_cpp_tests.bat         # 1-Klik: Jalankan 7 unit test suite C++ (QtTest)
-deploy_cpp.bat            # 1-Klik: Paketkan rilis mandiri C++ (windeployqt)
+run_cpp_tests.bat         # 1-Klik: Jalankan unit test suite C++ (QtTest)
+deploy_cpp.bat            # 1-Klik: Paketkan rilis mandiri C++ (windeployqt + py_backend)
+py_backend/               # Trading Engine Python
+  bridge_server.py        # IPC NDJSON bridge server (stdio streaming)
+  src/                    # BotEngine, NativeBackend, McpBackend, TradeRules, RiskManager, dll.
+  strategies/             # Strategi trading & scripts (Python)
+  config/                 # Settings & ConfigStore
+  tests/                  # 242 unit tests pytest (100% pass)
 cpp/                      # Sumber C++ (Qt 6.8.1 / MinGW 64-bit)
   CMakeLists.txt          # CMake project (target: xaviq_core, xaviq)
   resources.qrc           # Bundle QML & assets langsung ke biner
   src/
-    core/                 # Logger, Settings, ConfigStore, SecureStore
-    net/                  # McpClient (HTTP JSON-RPC 2.0, SSE, session tracking)
-    backend/              # Models, SymbolUtils, McpParse, TradingBackend, McpBackend
-    indicators/           # 22 Indikator matematis murni (akurasi 1e-6 vs Python)
-    strategy/             # Strategy base & built-in: ma_cross, rsi, bollinger, macd, multi, stochastic
-    engine/               # TradeRules (sizing/gates) & BotEngine (trading loop, virtual SL/TP)
-    script/               # ScriptContext (ctx JS) & ScriptStrategy (QJSEngine sandbox)
-    app/                  # Worker (QThread single loop) & BotController (QObject QML bridge)
+    app/                  # BotController (QObject QML bridge) & PyBridgeWorker (IPC C++ client)
+    core/                 # ConfigStore, Logger, SecureStore, Settings
+    indicators/           # Indikator matematis untuk visual overlay grafik candlestick di QML
     ui/                   # JsHighlighter (QSyntaxHighlighter native C++)
     main.cpp              # Entry point C++
   qml/                    # UI QML native C++
-  scripts/                # Contoh skrip JavaScript Mode Programmer (.js)
-docs/                     # Dokumentasi trading, script, MCP, proteksi
-legacy_python/            # Arsip referensi kode Python (PySide6)
-  app.py / main.py        # Entry GUI / CLI Python lama
-  src/ , ui/ , strategies/
-  tests/                  # 264 unit tests pytest
+  tests/                  # 4 test suite QtTest: test_core, test_indicators, test_pybridge, test_controller
 ```
 
-**Thread-safety:** SEMUA panggilan MT5/MCP terjadi di **satu worker thread** (`Worker` di `QThread`).
-QML memanggil slot di main thread; permintaan trading diantrikan (`QMutex`) ke worker.
-Worker mengirim data ke UI lewat sinyal Qt (queued). Dilarang keras memanggil MCP dari main thread.
+**Thread-safety & Komunikasi IPC:**
+Operasi trading MT5 dijalankan secara asinkron di proses terisolasi `py_backend/bridge_server.py`.
+`BotController` (di main thread Qt) berkomunikasi dengan `PyBridgeWorker` yang menyalurkan perintah trading dan menerima update feed harga/akun secara bidirectional via NDJSON (Newline Delimited JSON) stdio streaming berkecepatan tinggi. Bebas konflik port dan auto-shutdown saat GUI ditutup.
 
 ---
 
@@ -139,8 +136,9 @@ Skrip JavaScript berjalan di dalam sandbox `QJSEngine`: definisikan `SETTINGS` (
 ## 8. Checklist Verifikasi & Testing (Checklist Mutlak)
 
 Setiap perubahan kode WAJIB melewati verifikasi:
-1. `powershell -ExecutionPolicy Bypass -File C:\XaviqCpp\build.ps1` (Build sukses).
-2. `run_cpp_tests.bat` (7 / 7 test suite ctest lulus).
-3. `powershell -ExecutionPolicy Bypass -File C:\XaviqCpp\smoke.ps1` (SMOKE_EXIT=0).
-4. `deploy_cpp.bat` (Standalone build terverifikasi mandiri).
-5. Bersihkan semua berkas temporary (`_*.txt`, `*.tmp`).
+1. `powershell -ExecutionPolicy Bypass -File C:\XaviqCpp\build.ps1` (Build C++ sukses).
+2. `run_cpp_tests.bat` (4 / 4 test suite ctest lulus).
+3. `$env:PYTHONPATH="C:\Users\Administrator\Desktop\My Produk\Auto Trade\Bot Trading\py_backend"; pytest py_backend\tests` (290 unit tests pytest lulus).
+4. `powershell -ExecutionPolicy Bypass -File C:\XaviqCpp\smoke.ps1` (SMOKE_EXIT=0).
+5. `deploy_cpp.bat` (Standalone build terverifikasi mandiri).
+6. Bersihkan semua berkas temporary (`_*.txt`, `*.tmp`).
