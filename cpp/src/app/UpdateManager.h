@@ -12,6 +12,7 @@ class UpdateManager : public QObject
     Q_OBJECT
     Q_PROPERTY(bool checking READ checking NOTIFY checkingChanged)
     Q_PROPERTY(bool updateAvailable READ updateAvailable NOTIFY updateAvailableChanged)
+    Q_PROPERTY(bool isInstalledMode READ isInstalledMode CONSTANT)
     Q_PROPERTY(QString currentVersion READ currentVersion CONSTANT)
     Q_PROPERTY(QString latestVersion READ latestVersion NOTIFY updateAvailableChanged)
     Q_PROPERTY(QString releaseTitle READ releaseTitle NOTIFY updateAvailableChanged)
@@ -28,6 +29,7 @@ public:
 
     bool checking() const { return m_checking; }
     bool updateAvailable() const { return m_updateAvailable; }
+    bool isInstalledMode() const;
     QString currentVersion() const;
     QString latestVersion() const { return m_latestVersion; }
     QString releaseTitle() const { return m_releaseTitle; }

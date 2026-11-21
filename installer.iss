@@ -2,7 +2,7 @@
 ; High-Performance MetaTrader 5 Algorithmic Trading Desktop Engine
 
 #define MyAppName "X Trading Engine"
-#define MyAppVersion "3.2.1"
+#define MyAppVersion "3.2.2"
 #define MyAppPublisher "X Trading"
 #define MyAppURL "https://github.com/rezzboyy/Raptech-AutoTrade"
 #define MyAppExeName "XAVIQTradingEngine.exe"
@@ -34,12 +34,17 @@ SolidCompression=yes
 WizardStyle=modern
 
 ; Require 64-bit Windows
-ArchitecturesInstallIn64BitMode=x64
-ArchitecturesAllowed=x64
+ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed=x64compatible
 
 ; Privileges (Dapat diinstal tanpa admin ke LocalAppData, atau dengan admin ke Program Files)
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
+
+; Seamless OTA & Auto Close Running Applications on Update
+CloseApplications=force
+CloseApplicationsFilter=*.exe
+RestartApplications=no
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

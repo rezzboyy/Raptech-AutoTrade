@@ -33,6 +33,12 @@ QString UpdateManager::currentVersion() const
     return Xaviq::APP_VERSION;
 }
 
+bool UpdateManager::isInstalledMode() const
+{
+    QString appDir = QFileInfo(QCoreApplication::applicationFilePath()).absolutePath();
+    return QFile::exists(appDir + QStringLiteral("/unins000.exe"));
+}
+
 QList<int> UpdateManager::parseSemver(const QString &vStr)
 {
     QString clean = vStr.trimmed();
@@ -186,22 +192,41 @@ void UpdateManager::onCheckFinished()
     }
     m_releaseNotes = root.value(QStringLiteral("body")).toString();
 
-    // Cari aset biner: prioritaskan .zip paket lengkap, atau .exe standalone
+    // Deteksi mode aplikasi: Terpasang (Setup Inno) atau Portabel (Folder Mandiri)
+    bool installed = isInstalledMode();
     m_downloadUrl.clear();
     m_fileSizeBytes = 0;
     m_fileSizeMb = 0.0;
 
     QJsonArray assets = root.value(QStringLiteral("assets")).toArray();
-    for (const QJsonValue &val : assets) {
-        QJsonObject assetObj = val.toObject();
-        QString name = assetObj.value(QStringLiteral("name")).toString().toLower();
-        if (name.endsWith(QStringLiteral(".zip"))) {
-            m_downloadUrl = assetObj.value(QStringLiteral("browser_download_url")).toString();
-            m_fileSizeBytes = (qint64)assetObj.value(QStringLiteral("size")).toDouble();
-            break; // Prioritaskan paket rilis ZIP
+
+    if (installed) {
+        // Mode Terpasang: Prioritaskan berkas Setup Installer untuk silent in-place upgrade
+        for (const QJsonValue &val : assets) {
+            QJsonObject assetObj = val.toObject();
+            QString name = assetObj.value(QStringLiteral("name")).toString().toLower();
+            if (name.endsWith(QStringLiteral(".exe")) && (name.contains(QStringLiteral("setup")) || name.contains(QStringLiteral("installer")))) {
+                m_downloadUrl = assetObj.value(QStringLiteral("browser_download_url")).toString();
+                m_fileSizeBytes = (qint64)assetObj.value(QStringLiteral("size")).toDouble();
+                break;
+            }
         }
     }
 
+    // Jika mode portabel ATAU installer belum ditemukan, prioritaskan arsip .zip portabel
+    if (m_downloadUrl.isEmpty()) {
+        for (const QJsonValue &val : assets) {
+            QJsonObject assetObj = val.toObject();
+            QString name = assetObj.value(QStringLiteral("name")).toString().toLower();
+            if (name.endsWith(QStringLiteral(".zip"))) {
+                m_downloadUrl = assetObj.value(QStringLiteral("browser_download_url")).toString();
+                m_fileSizeBytes = (qint64)assetObj.value(QStringLiteral("size")).toDouble();
+                break;
+            }
+        }
+    }
+
+    // Fallback: biner .exe apa pun yang tersedia
     if (m_downloadUrl.isEmpty()) {
         for (const QJsonValue &val : assets) {
             QJsonObject assetObj = val.toObject();
@@ -349,7 +374,10 @@ void UpdateManager::applyUpdateWindows(const QString &downloadedFilePath)
     QString appDir = exeInfo.absolutePath();
     QString exeName = exeInfo.fileName();
 
-    QString batchPath = appDir + QStringLiteral("/_finish_update.bat");
+    // Simpan skrip update sementara di Temp agar tidak terhalang hak akses appDir
+    QString tempDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + QStringLiteral("/XaviqUpdate");
+    QDir().mkpath(tempDir);
+    QString batchPath = tempDir + QStringLiteral("/_finish_update.bat");
     QFile batchFile(batchPath);
 
     if (!batchFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -359,54 +387,99 @@ void UpdateManager::applyUpdateWindows(const QString &downloadedFilePath)
     }
 
     bool isZip = downloadedFilePath.endsWith(QStringLiteral(".zip"), Qt::CaseInsensitive);
+    bool isSetupExe = downloadedFilePath.endsWith(QStringLiteral(".exe"), Qt::CaseInsensitive) &&
+                      (downloadedFilePath.contains(QStringLiteral("setup"), Qt::CaseInsensitive) ||
+                       downloadedFilePath.contains(QStringLiteral("installer"), Qt::CaseInsensitive));
 
     QString scriptContent;
-    if (isZip) {
-        // Ekstrak arsip ZIP menggunakan tar (bawaan Windows 10/11 / Windows Server)
+    if (isSetupExe) {
+        // Mode 1: Silent Inno Setup Installer (Paling Mulus & Bersih)
+        // 1. Beri jeda 1 detik lalu matikan seluruh proses lama (termasuk py_bridge) agar tidak ada file lock.
+        // 2. Jalankan setup secara 100% hening (/VERYSILENT /SUPPRESSMSGBOXES /NORESTART) menimpa folder terpasang.
+        // 3. Jalankan kembali bot versi baru secara otomatis.
+        // 4. Bersihkan file installer sementara dan script batch.
         scriptContent = QStringLiteral(
             "@echo off\r\n"
             "chcp 65001 >nul\r\n"
-            "echo Menunggu aplikasi tertutup...\r\n"
-            "timeout /t 2 /nobreak >nul\r\n"
-            ":retry\r\n"
-            "tar -xf \"%1\" -C \"%2\" >nul 2>&1\r\n"
-            "if errorlevel 1 (\r\n"
-            "    timeout /t 1 /nobreak >nul\r\n"
-            "    goto retry\r\n"
-            ")\r\n"
-            "echo Memperbarui file berhasil!\r\n"
-            "start \"\" \"%3\"\r\n"
+            "echo [OTA] Menutup bot lama...\r\n"
+            "timeout /t 1 /nobreak >nul\r\n"
+            "taskkill /F /IM \"%2\" >nul 2>&1\r\n"
+            "taskkill /F /IM py_bridge.exe >nul 2>&1\r\n"
+            "taskkill /F /IM python.exe >nul 2>&1\r\n"
+            "timeout /t 1 /nobreak >nul\r\n"
+            "echo [OTA] Memasang pembaruan secara otomatis di latar belakang...\r\n"
+            "\"%1\" /SP- /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /DIR=\"%3\"\r\n"
+            "echo [OTA] Meluncurkan kembali bot versi terbaru...\r\n"
+            "start \"\" \"%4\"\r\n"
             "del \"%1\" >nul 2>&1\r\n"
-            "del \"%%~f0\"\r\n"
+            "del \"%5\" >nul 2>&1\r\n"
             "exit\r\n"
         ).arg(QDir::toNativeSeparators(downloadedFilePath),
+             exeName,
              QDir::toNativeSeparators(appDir),
-             QDir::toNativeSeparators(currentExePath));
-    } else {
-        // Timpa file EXE langsung
+             QDir::toNativeSeparators(currentExePath),
+             QDir::toNativeSeparators(batchPath));
+    } else if (isZip) {
+        // Mode 2: Portable ZIP Package
+        // 1. Matikan sisa proses lama (XAVIQTradingEngine.exe & py_bridge.exe)
+        // 2. Ekstrak arsip ZIP menggunakan tar bawaan Windows
+        // 3. Jalankan kembali bot dan bersihkan file unduhan
         scriptContent = QStringLiteral(
             "@echo off\r\n"
             "chcp 65001 >nul\r\n"
-            "echo Menunggu aplikasi tertutup...\r\n"
-            "timeout /t 2 /nobreak >nul\r\n"
+            "echo [OTA] Menutup bot lama...\r\n"
+            "timeout /t 1 /nobreak >nul\r\n"
+            "taskkill /F /IM \"%2\" >nul 2>&1\r\n"
+            "taskkill /F /IM py_bridge.exe >nul 2>&1\r\n"
+            "taskkill /F /IM python.exe >nul 2>&1\r\n"
+            "timeout /t 1 /nobreak >nul\r\n"
+            "echo [OTA] Mengekstrak pembaruan portabel...\r\n"
             ":retry\r\n"
-            "move /y \"%1\" \"%2\" >nul 2>&1\r\n"
+            "tar -xf \"%1\" -C \"%3\" >nul 2>&1\r\n"
             "if errorlevel 1 (\r\n"
             "    timeout /t 1 /nobreak >nul\r\n"
             "    goto retry\r\n"
             ")\r\n"
-            "echo Memperbarui file berhasil!\r\n"
-            "start \"\" \"%2\"\r\n"
-            "del \"%%~f0\"\r\n"
+            "echo [OTA] Pembaruan portabel berhasil!\r\n"
+            "start \"\" \"%4\"\r\n"
+            "del \"%1\" >nul 2>&1\r\n"
+            "del \"%5\" >nul 2>&1\r\n"
             "exit\r\n"
         ).arg(QDir::toNativeSeparators(downloadedFilePath),
-             QDir::toNativeSeparators(currentExePath));
+             exeName,
+             QDir::toNativeSeparators(appDir),
+             QDir::toNativeSeparators(currentExePath),
+             QDir::toNativeSeparators(batchPath));
+    } else {
+        // Mode 3: Timpa Biner EXE Langsung (Fallback)
+        scriptContent = QStringLiteral(
+            "@echo off\r\n"
+            "chcp 65001 >nul\r\n"
+            "echo [OTA] Menutup bot lama...\r\n"
+            "timeout /t 1 /nobreak >nul\r\n"
+            "taskkill /F /IM \"%2\" >nul 2>&1\r\n"
+            "taskkill /F /IM py_bridge.exe >nul 2>&1\r\n"
+            "timeout /t 1 /nobreak >nul\r\n"
+            ":retry\r\n"
+            "move /y \"%1\" \"%3\" >nul 2>&1\r\n"
+            "if errorlevel 1 (\r\n"
+            "    timeout /t 1 /nobreak >nul\r\n"
+            "    goto retry\r\n"
+            ")\r\n"
+            "echo [OTA] Biner berhasil diperbarui!\r\n"
+            "start \"\" \"%3\"\r\n"
+            "del \"%4\" >nul 2>&1\r\n"
+            "exit\r\n"
+        ).arg(QDir::toNativeSeparators(downloadedFilePath),
+             exeName,
+             QDir::toNativeSeparators(currentExePath),
+             QDir::toNativeSeparators(batchPath));
     }
 
     batchFile.write(scriptContent.toUtf8());
     batchFile.close();
 
-    qInfo("Memulai transisi pembaruan in-place via %s", batchPath.toUtf8().constData());
+    qInfo("Memulai transisi pembaruan otomatis via %s", batchPath.toUtf8().constData());
 
     // Jalankan batch script detached dan keluar dari aplikasi
     QProcess::startDetached(QStringLiteral("cmd.exe"), QStringList() << QStringLiteral("/c") << batchPath);

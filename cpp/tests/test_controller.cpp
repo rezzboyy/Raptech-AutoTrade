@@ -191,6 +191,11 @@ private slots:
         QCOMPARE(parts[0], 3);
         QCOMPARE(parts[1], 12);
         QCOMPARE(parts[2], 5);
+
+        UpdateManager um;
+        // isInstalledMode returns a valid boolean without crashing
+        bool mode = um.isInstalledMode();
+        Q_UNUSED(mode);
     }
 };
 
