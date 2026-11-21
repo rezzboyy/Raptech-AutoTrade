@@ -1,7 +1,7 @@
 # task.md — Master Execution Plan & Zero-Bug Functional Audit: Redesain Desktop UI X Trading Engine + Auto-Update (OTA)
 
-> **Versi Dokumen:** 2.2 (Rilis Produksi v3.2.1: Polishing UI, Flat Header, Capped Form, Trash History, & OTA In-Place Verified)  
-> **Status:** SELESAI 100% ✅ (Build Sukses, 4/4 QtTest PASS, 290/290 Pytest PASS, Smoke UI PASS, Rilis v3.2.1 Live di GitHub)  
+> **Versi Dokumen:** 2.3 (Rilis Produksi v3.2.2: Dual-Mode Smart OTA In-Place Silent Engine, Lock-Free Background Update & Zero-Bug Verified)  
+> **Status:** SELESAI 100% ✅ (Build Sukses, 4/4 QtTest PASS, 290/290 Pytest PASS, Smoke UI PASS, Rilis v3.2.2 Live di GitHub)  
 > **Target:** Merombak tampilan GUI C++ Qt 6.8.1 desktop X Trading Engine agar 100% presisi mengikuti tata letak workstation profesional (Sidebar Kontrol & Telemetri 320px di kiri, Multi-Tab Workspace & High-Contrast Data Grid di kanan) dengan **zero-regression**, **zero-bug**, performa ringan (< 50 MB RAM), eksekusi instan tanpa lag, serta **sistem pembaruan otomatis (OTA Auto-Update) terintegrasi via GitHub Releases**.  
 > **Acuan Desain:** Berkas blueprint di [Foto Plan](file:///C:/Users/Administrator/Desktop/My%20Produk/Auto%20Trade/Bot%20Trading/Foto%20Plan/)  
 > - [01_Design_Plan_Mockup_Layout_Baru.png](file:///C:/Users/Administrator/Desktop/My%20Produk/Auto%20Trade/Bot%20Trading/Foto%20Plan/01_Design_Plan_Mockup_Layout_Baru.png) (Mockup 1920x1080)  
