@@ -36,6 +36,8 @@ QString PyBridgeWorker::findStandaloneBridge() const
         appDir + QStringLiteral("/py_bridge.exe"),
         cwd + QStringLiteral("/py_bridge/py_bridge.exe"),
         cwd + QStringLiteral("/py_bridge.exe"),
+        appDir + QStringLiteral("/dist/XTradingEngine/py_bridge/py_bridge.exe"),
+        cwd + QStringLiteral("/dist/XTradingEngine/py_bridge/py_bridge.exe"),
         appDir + QStringLiteral("/dist/XAVIQTradingEngine/py_bridge/py_bridge.exe"),
         cwd + QStringLiteral("/dist/XAVIQTradingEngine/py_bridge/py_bridge.exe"),
         canonApp + QStringLiteral("/py_bridge/py_bridge.exe"),

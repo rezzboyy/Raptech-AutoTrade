@@ -5,7 +5,7 @@
 #define MyAppVersion "3.2.2"
 #define MyAppPublisher "X Trading"
 #define MyAppURL "https://github.com/rezzboyy/Raptech-AutoTrade"
-#define MyAppExeName "XAVIQTradingEngine.exe"
+#define MyAppExeName "XTradingEngine.exe"
 
 [Setup]
 ; Unique AppId generated specifically for X Trading Engine
@@ -54,7 +54,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 ; Seluruh berkas biner standalone, runtime Qt, dan embedded Python engine
-Source: "dist\XAVIQTradingEngine\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "dist\XTradingEngine\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

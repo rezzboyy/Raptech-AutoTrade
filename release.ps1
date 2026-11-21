@@ -166,17 +166,17 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-$localDist = "$scriptDir\dist\XAVIQTradingEngine"
-$exePath = "$localDist\XAVIQTradingEngine.exe"
+$localDist = "$scriptDir\dist\XTradingEngine"
+$exePath = "$localDist\XTradingEngine.exe"
 $zipPath = "$scriptDir\dist\XTradingEngine_Portable_v$targetVersion.zip"
 
 if (-not (Test-Path $exePath)) {
-    Write-Host "Error: File binary XAVIQTradingEngine.exe tidak ditemukan di $exePath!" -ForegroundColor Red
+    Write-Host "Error: File binary XTradingEngine.exe tidak ditemukan di $exePath!" -ForegroundColor Red
     exit 1
 }
 
 # Salin ZIP rilis ber-versi
-$baseZip = "$scriptDir\dist\XAVIQTradingEngine.zip"
+$baseZip = "$scriptDir\dist\XTradingEngine.zip"
 if (Test-Path $baseZip) {
     Copy-Item $baseZip $zipPath -Force
 } else {
@@ -245,7 +245,7 @@ $Notes
   - SHA-256: $setupHash
 - **Portable ZIP Package**: `XTradingEngine_Portable_v$targetVersion.zip` ($zipSizeMb MB)
   - SHA-256: $zipHash
-- **Standalone Binary**: `XAVIQTradingEngine.exe` ($exeSizeMb MB)
+- **Standalone Binary**: `XTradingEngine.exe` ($exeSizeMb MB)
   - SHA-256: $exeHash
 
 ---
@@ -257,7 +257,7 @@ $Notes
    - Pengguna yang sudah memasang aplikasi cukup membukanya, dialog **Pembaruan Aplikasi Tersedia** akan otomatis muncul.
    - Atau klik tombol **Update v$targetVersion** pada status bar aplikasi untuk memperbarui dalam 1-klik tanpa uninstall atau pasang ulang!
 3. **Versi Portabel Tanpa Instalasi**:
-   - Ekstrak berkas `XTradingEngine_Portable_v$targetVersion.zip` dan jalankan `XAVIQTradingEngine.exe` atau `Run_XAVIQ.bat`.
+   - Ekstrak berkas `XTradingEngine_Portable_v$targetVersion.zip` dan jalankan `XTradingEngine.exe` atau `Run_XTradingEngine.bat`.
 "@
 
 $notesFile = Join-Path $scriptDir "RELEASE_NOTES_temp.md"

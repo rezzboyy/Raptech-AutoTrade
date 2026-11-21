@@ -1,7 +1,7 @@
 @echo off
 REM ============================================================
 REM  deploy_cpp.bat - Paketkan rilis mandiri C++ (windeployqt)
-REM  Hasil rilis: C:\XaviqCppDist\XAVIQTradingEngine\
+REM  Hasil rilis: C:\XaviqCppDist\XTradingEngine\
 REM ============================================================
 setlocal
 

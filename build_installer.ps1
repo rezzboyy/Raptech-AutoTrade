@@ -23,7 +23,7 @@ if (-not $isccPath) {
 }
 
 Write-Host "`n[1/2] Memeriksa paket distribusi mandiri..." -ForegroundColor Yellow
-$exePath = Join-Path $scriptDir "dist\XAVIQTradingEngine\XAVIQTradingEngine.exe"
+$exePath = Join-Path $scriptDir "dist\XTradingEngine\XTradingEngine.exe"
 if (-not (Test-Path $exePath)) {
     Write-Host "      Folder dist belum lengkap, menjalankan deploy_cpp.bat..." -ForegroundColor Gray
     & cmd /c deploy_cpp.bat
