@@ -6,7 +6,7 @@ import QtQuick.Dialogs
 import Xaviq 1.0
 import "."
 
-// Mode Programmer: editor skrip JS (editor pro) + Bantuan API + Risiko + Start/Stop.
+// Mode Programmer: editor skrip JS (editor pro) + Bantuan API + Start/Stop.
 Rectangle {
     id: root
     color: Theme.surface
@@ -246,30 +246,6 @@ Rectangle {
                 text: "Ketik skrip — validasi otomatis berjalan."
             }
 
-            // ===== Risiko & Proteksi (bersama tab Manual) =====
-            RowLayout {
-                Layout.fillWidth: true
-                Text { text: "Risiko & Proteksi"; color: Theme.textSecondary; font.pixelSize: 11; font.bold: true; Layout.fillWidth: true }
-                CButton { text: riskBox.visible ? "Sembunyikan" : "Atur"; Layout.preferredHeight: 28; font.pixelSize: 11; onClicked: riskBox.visible = !riskBox.visible }
-            }
-            ColumnLayout {
-                id: riskBox
-                Layout.fillWidth: true
-                visible: false
-                spacing: 8
-                RiskConfigForm { id: riskForm; Layout.fillWidth: true }
-                CButton {
-                    text: "Simpan Pengaturan Risiko"
-                    icon.source: "qrc:/assets/save.svg"; icon.width: 13; icon.height: 13
-                    Layout.fillWidth: true; Layout.preferredHeight: 32
-                    onClicked: {
-                        var ok = bot.saveConfig(riskForm.collect())
-                        root.setStatus(ok ? "Pengaturan risiko disimpan." : "Gagal menyimpan (cek nilai).", ok)
-                    }
-                }
-            }
-            Component.onCompleted: if (riskForm) riskForm.load()
-
             Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }
 
             // ===== Aksi =====
@@ -293,7 +269,6 @@ Rectangle {
                     if (root.botTrading) { bot.setTrading(false); return }
                     bot.setScript(editor.text)
                     bot.setTrading(true)
-                    if (riskForm) riskForm.load()
                 }
             }
             Text {
