@@ -48,8 +48,8 @@ struct Settings {
     double equityStopLoss = 0.0;
     int maxConsecutiveLosses = 0;
 
-    // ----- Strategi / Mode Programmer -----
-    QString strategyName = "ma_cross";
+    // ----- Strategi / Mode Programmer (Single Official Engine) -----
+    QString strategyName = "custom_script";
     QVariantMap strategyParams;                                // parameter strategi bawaan
     QString scriptName;
     QString scriptSource;

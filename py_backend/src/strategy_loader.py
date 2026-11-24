@@ -50,16 +50,13 @@ _CUSTOM_SCRIPT_DESC = {
 
 
 def available() -> list:
-    """Daftar deskripsi semua strategi terdaftar (untuk UI)."""
-    ensure_loaded()
-    result = [cls.describe() for cls in get_registry().values()]
-    result.append(dict(_CUSTOM_SCRIPT_DESC))
-    return result
+    """Daftar deskripsi strategi resmi (Mode Programmer tunggal)."""
+    return [dict(_CUSTOM_SCRIPT_DESC)]
 
 
 def names() -> list:
     ensure_loaded()
-    return list(get_registry().keys()) + ["custom_script"]
+    return ["custom_script"] + list(get_registry().keys())
 
 
 def get_class(name: str):
@@ -69,16 +66,21 @@ def get_class(name: str):
 
 def create(name: str, params: dict = None):
     """Buat instance strategi berdasarkan nama + parameter."""
+    if name == "custom_script":
+        from strategies.script_runtime import ScriptStrategy
+        from config import settings
+        return ScriptStrategy(settings.script_source, params or {})
     cls = get_class(name)
-    if cls is None:
-        raise ValueError(f"Strategi '{name}' tidak ditemukan.")
-    return cls(**(params or {}))
+    if cls is not None:
+        return cls(**(params or {}))
+    from strategies.script_runtime import ScriptStrategy
+    return ScriptStrategy("", {})
 
 
 def validate(name: str, params: dict) -> list:
     """Validasi nama strategi + parameternya. Kembalikan daftar error."""
     if name == "custom_script":
-        return []  # divalidasi terpisah lewat compile skrip
+        return []
     cls = get_class(name)
     if cls is None:
         return [f"Strategi tidak dikenal: {name}"]

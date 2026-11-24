@@ -28,6 +28,11 @@ private slots:
         QVariantMap cfg = ctrl.getConfig();
         QVERIFY(cfg.contains(QStringLiteral("symbol")));
         QVERIFY(!cfg[QStringLiteral("symbol")].toString().isEmpty());
+
+        // Strategi resmi tunggal: Mode Programmer (custom_script)
+        QVariantList strats = ctrl.getStrategies();
+        QCOMPARE(strats.size(), 1);
+        QCOMPARE(strats[0].toMap().value(QStringLiteral("name")).toString(), QStringLiteral("custom_script"));
     }
 
     void scriptValidation_valid()

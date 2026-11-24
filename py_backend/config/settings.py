@@ -153,8 +153,8 @@ class Settings:
     # Safety guard: pause auto-trading setelah N loss beruntun (0 = nonaktif).
     max_consecutive_losses: int = _get_int("MAX_CONSECUTIVE_LOSSES", 0)
 
-    # Strategi terpilih + parameternya (parameter dinamis sesuai strategi).
-    strategy_name: str = os.getenv("STRATEGY", "ma_cross")
+    # Mode Programmer: satu-satunya engine strategi resmi bot.
+    strategy_name: str = os.getenv("STRATEGY", "custom_script")
     strategy_params: dict = field(default_factory=dict)
 
     # Mode Programmer: skrip strategi kustom (dipakai bila strategy_name == "custom_script").

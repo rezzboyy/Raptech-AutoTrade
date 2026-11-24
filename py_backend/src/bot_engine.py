@@ -60,13 +60,14 @@ class BotEngine:
     def _build_strategy(self):
         try:
             if settings.strategy_name == "custom_script":
-                from strategies.script_runtime import ScriptStrategy
-                return ScriptStrategy(settings.script_source, settings.strategy_params)
+                from strategies.script_runtime import ScriptStrategy, DEFAULT_TEMPLATE
+                src = settings.script_source if (settings.script_source and settings.script_source.strip()) else DEFAULT_TEMPLATE
+                return ScriptStrategy(src, settings.strategy_params)
             return strategy_loader.create(settings.strategy_name, settings.strategy_params)
         except Exception as exc:  # noqa: BLE001
-            logger.error("Gagal membuat strategi '%s' (%s), fallback ke ma_cross.",
-                         settings.strategy_name, exc)
-            return strategy_loader.create("ma_cross", {})
+            logger.error("Gagal membuat strategi '%s' (%s), menggunakan skrip aman.", settings.strategy_name, exc)
+            from strategies.script_runtime import ScriptStrategy, DEFAULT_TEMPLATE
+            return ScriptStrategy(DEFAULT_TEMPLATE, {})
 
     def rebuild_strategy(self) -> None:
         self.strategy = self._build_strategy()

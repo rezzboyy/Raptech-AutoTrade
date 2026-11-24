@@ -151,7 +151,7 @@ QStringList apply(const QJsonObject &o, Settings &s)
     if (o.contains("max_exposure_lots")) s.maxExposureLots = o["max_exposure_lots"].toDouble();
     if (o.contains("equity_stop_loss")) s.equityStopLoss = o["equity_stop_loss"].toDouble();
     if (o.contains("max_consecutive_losses")) s.maxConsecutiveLosses = o["max_consecutive_losses"].toInt();
-    if (o.contains("strategy_name")) s.strategyName = o["strategy_name"].toString();
+    s.strategyName = QStringLiteral("custom_script");
     if (o.contains("strategy_params")) s.strategyParams = o["strategy_params"].toObject().toVariantMap();
     if (o.contains("script_name")) s.scriptName = o["script_name"].toString();
     if (o.contains("script_source")) s.scriptSource = o["script_source"].toString();

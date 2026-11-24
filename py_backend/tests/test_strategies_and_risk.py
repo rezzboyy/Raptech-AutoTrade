@@ -24,6 +24,7 @@ class TestStrategies(unittest.TestCase):
 
     def test_all_strategies_registered(self):
         names = strategy_loader.names()
+        self.assertIn("custom_script", names)
         expected = ["ma_cross", "rsi", "bollinger", "macd", "stochastic", "multi_indicator"]
         for exp in expected:
             self.assertIn(exp, names, f"Strategi {exp} belum terdaftar di registry!")

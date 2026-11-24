@@ -522,57 +522,26 @@ bool BotController::applyConfig(const QVariantMap &cfg)
 
 QVariantList BotController::getStrategies()
 {
-    auto param = [](const QString &key, const QString &label, const QString &type,
-                    double def, double minv) {
-        return QVariantMap{{"key", key}, {"label", label}, {"type", type},
-                           {"default", def}, {"min", minv}};
-    };
-    auto strat = [](const QString &name, const QString &display, const QVariantList &params) {
-        return QVariantMap{{"name", name}, {"display_name", display}, {"params", params}};
-    };
     QVariantList out;
-    out << strat("ma_cross", "MA Crossover", {
-        param("fast_period", "MA Cepat", "int", 10, 1),
-        param("slow_period", "MA Lambat", "int", 30, 2)});
-    out << strat("rsi", "RSI Oversold/Overbought", {
-        param("period", "Periode RSI", "int", 14, 2),
-        param("oversold", "Level Oversold", "float", 30.0, 1),
-        param("overbought", "Level Overbought", "float", 70.0, 1)});
-    out << strat("bollinger", "Bollinger Bands", {
-        param("period", "Periode SMA", "int", 20, 2),
-        param("std_dev", "Deviasi Standar", "float", 2.0, 0.5)});
-    out << strat("macd", "MACD Crossover", {
-        param("fast_ema", "Fast EMA", "int", 12, 2),
-        param("slow_ema", "Slow EMA", "int", 26, 3),
-        param("signal_period", "Signal Period", "int", 9, 1)});
-    out << strat("multi_indicator", "Multi-Indicator (Trend + RSI)", {
-        param("ma_fast", "MA Cepat (Tren)", "int", 20, 2),
-        param("ma_slow", "MA Lambat (Tren)", "int", 50, 3),
-        param("rsi_period", "Periode RSI", "int", 14, 2),
-        param("rsi_buy_level", "RSI Trigger Buy", "float", 50.0, 10),
-        param("rsi_sell_level", "RSI Trigger Sell", "float", 50.0, 10)});
-    out << strat("stochastic", "Stochastic Oscillator", {
-        param("k_period", "Periode %K", "int", 14, 2),
-        param("d_period", "Periode %D", "int", 3, 1),
-        param("oversold", "Level Oversold", "float", 20.0, 1),
-        param("overbought", "Level Overbought", "float", 80.0, 1)});
+    out << QVariantMap{
+        {QStringLiteral("name"), QStringLiteral("custom_script")},
+        {QStringLiteral("display_name"), QStringLiteral("Mode Programmer (Custom Script)")},
+        {QStringLiteral("params"), QVariantList()}
+    };
     return out;
 }
 
 bool BotController::saveConfig(const QVariantMap &cfg)
 {
     QVariantMap risk = cfg;
-    const QString stratName = risk.take("strategy_name").toString();
-    const QVariantMap stratParams = risk.take("strategy_params").toMap();
+    risk.take("strategy_name");
+    risk.take("strategy_params");
     const QStringList errs = ConfigStore::apply(QJsonObject::fromVariantMap(risk), settings());
     if (!errs.isEmpty()) {
         emit configError(errs.join("; "));
         return false;
     }
-    if (!stratName.isEmpty())
-        settings().strategyName = stratName;
-    if (!stratParams.isEmpty())
-        settings().strategyParams = stratParams;
+    settings().strategyName = QStringLiteral("custom_script");
     ConfigStore::save(settings());
     if (m_pyWorker && m_pyWorker->isRunning()) {
         QVariantMap p;

@@ -425,7 +425,7 @@ def test_engine_builds_script_strategy_from_settings(monkeypatch):
 
 
 def test_engine_invalid_script_falls_back(monkeypatch):
-    """Skrip rusak -> engine fallback ke ma_cross (tidak crash)."""
+    """Skrip rusak -> engine fallback ke safe template Mode Programmer (tidak crash)."""
     from config.settings import settings
     from src.bot_engine import BotEngine
 
@@ -435,9 +435,9 @@ def test_engine_invalid_script_falls_back(monkeypatch):
     monkeypatch.setattr(settings, "strategy_params", {})
 
     engine = BotEngine()
-    # Bukan ScriptStrategy karena gagal kompilasi -> fallback.
-    assert not isinstance(engine.strategy, ScriptStrategy)
-    assert engine.strategy.name == "ma_cross"
+    # Engine fallback ke safe template default ScriptStrategy tanpa crash
+    assert isinstance(engine.strategy, ScriptStrategy)
+    assert engine.strategy.name == "custom_script"
 
 
 # ----- Order intent gaya cBot (skrip mengontrol SL/TP/volume) -----

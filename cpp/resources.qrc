@@ -13,7 +13,6 @@
         <file>qml/CCombo.qml</file>
         <file>qml/ThinScrollBar.qml</file>
         <file>qml/LoginPanel.qml</file>
-        <file>qml/RiskConfigForm.qml</file>
         <file>qml/ProgrammerPanel.qml</file>
         <file>qml/LogPanel.qml</file>
         <file>qml/CandleChart.qml</file>
