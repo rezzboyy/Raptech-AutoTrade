@@ -2,7 +2,7 @@
 ; High-Performance MetaTrader 5 Algorithmic Trading Desktop Engine
 
 #define MyAppName "X Trading Engine"
-#define MyAppVersion "3.2.4"
+#define MyAppVersion "3.2.5"
 #define MyAppPublisher "X Trading"
 #define MyAppURL "https://github.com/rezzboyy/Raptech-AutoTrade"
 #define MyAppExeName "XTradingEngine.exe"
