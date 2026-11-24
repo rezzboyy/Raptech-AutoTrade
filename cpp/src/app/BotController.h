@@ -85,6 +85,7 @@ public slots:
     void setBackend(const QString &name);
     void setMcpConfig(const QString &endpoint, const QString &apiKey);
     void refreshStats();
+    void resetStats();
     QVariantMap getConfig();
     QVariantMap getMcpConfig();
     bool applyConfig(const QVariantMap &cfg);

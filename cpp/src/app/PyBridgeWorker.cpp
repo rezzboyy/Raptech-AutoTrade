@@ -371,6 +371,8 @@ void PyBridgeWorker::enqueue(const ManualCommand &cmd)
         QVariantMap p;
         p[QStringLiteral("ticket")] = static_cast<qint64>(cmd.ticket);
         sendCommand(QStringLiteral("delete_order"), p);
+    } else if (cmd.action == QLatin1String("reset_stats")) {
+        sendCommand(QStringLiteral("reset_stats"), QVariantMap());
     }
 }
 

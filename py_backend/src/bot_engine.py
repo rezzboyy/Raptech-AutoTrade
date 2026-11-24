@@ -213,19 +213,35 @@ class BotEngine:
 
     # ----- Statistik & kurva ekuitas -----
 
+    def reset_stats(self) -> None:
+        self._stats_reset_time = datetime.now(timezone.utc).timestamp()
+        self._deals_cache = []
+        self._deals_cache_time = 0.0
+
     def _closed_deals(self, days: int = 90) -> list:
         now = datetime.now(timezone.utc)
         now_ts = now.timestamp()
         if hasattr(self, "_deals_cache") and (now_ts - getattr(self, "_deals_cache_time", 0.0)) < 4.0:
-            return self._deals_cache
+            deals = self._deals_cache
+        else:
+            deals = self.backend.history_deals(now - timedelta(days=days), now + timedelta(days=1))
+            if settings.magic_number > 0:
+                matched = [d for d in deals if int(d.get("magic", 0)) == settings.magic_number]
+                if matched:
+                    deals = matched
+            self._deals_cache = deals
+            self._deals_cache_time = now_ts
 
-        deals = self.backend.history_deals(now - timedelta(days=days), now + timedelta(days=1))
-        if settings.magic_number > 0:
-            matched = [d for d in deals if int(d.get("magic", 0)) == settings.magic_number]
-            if matched:
-                deals = matched
-        self._deals_cache = deals
-        self._deals_cache_time = now_ts
+        reset_time = getattr(self, "_stats_reset_time", None)
+        if reset_time is not None:
+            filtered = []
+            for d in deals:
+                t = d.get("time", 0)
+                if isinstance(t, datetime):
+                    t = t.timestamp()
+                if t >= reset_time:
+                    filtered.append(d)
+            deals = filtered
         return deals
 
     def poll_stats(self) -> dict:

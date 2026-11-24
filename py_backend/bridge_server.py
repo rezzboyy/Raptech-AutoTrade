@@ -328,6 +328,10 @@ class PythonEngineWorker:
                         "ok": ok,
                         "message": "Pending order dihapus." if ok else "Gagal menghapus pending order."
                     })
+                elif action == "reset_stats":
+                    self.engine.reset_stats()
+                    stats = self.engine.poll_stats()
+                    self.emitter.send_event("statsUpdated", stats)
             except Exception as exc:
                 log.error("Perintah manual '%s' gagal: %s", cmd, exc)
                 self.emitter.send_event("orderFeedback", {
@@ -496,6 +500,16 @@ class BridgeService:
                 "ticket": int(ticket)
             })
             self.worker.wake()
+        return {"ok": True}
+
+    def handle_reset_stats(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        if self.worker and self.worker.running:
+            self.worker.cmd_queue.put({"action": "reset_stats"})
+            self.worker.wake()
+        elif hasattr(self, "engine"):
+            self.engine.reset_stats()
+            stats = self.engine.poll_stats()
+            self.emitter.send_event("statsUpdated", stats)
         return {"ok": True}
 
     def handle_set_chart_symbol(self, params: Dict[str, Any]) -> Dict[str, Any]:

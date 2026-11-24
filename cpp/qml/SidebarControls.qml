@@ -499,6 +499,41 @@ Rectangle {
                         }
                         Item { Layout.fillWidth: true }
                         Rectangle {
+                            height: 18
+                            radius: 3
+                            color: resetSideMouse.containsMouse ? "#1E293B" : Theme.surface
+                            border.color: resetSideMouse.containsMouse ? Theme.accent : Theme.border
+                            border.width: 1
+                            implicitWidth: resetSideText.implicitWidth + 12
+                            RowLayout {
+                                anchors.centerIn: parent
+                                spacing: 3
+                                Image {
+                                    source: "qrc:/assets/refresh.svg"
+                                    sourceSize: Qt.size(9, 9)
+                                    Layout.preferredWidth: 9
+                                    Layout.preferredHeight: 9
+                                    opacity: resetSideMouse.containsMouse ? 1.0 : 0.7
+                                }
+                                Text {
+                                    id: resetSideText
+                                    text: "Reset Stats"
+                                    font.pixelSize: 9
+                                    font.bold: true
+                                    color: resetSideMouse.containsMouse ? Theme.accent : Theme.textMuted
+                                }
+                            }
+                            MouseArea {
+                                id: resetSideMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: if (bot) bot.resetStats()
+                            }
+                            ToolTip.visible: resetSideMouse.containsMouse
+                            ToolTip.text: "Reset statistik performa (Daily PnL, Win Rate) ke 0"
+                        }
+                        Rectangle {
                             height: 16
                             radius: 3
                             color: (bot && bot.accountType === "REAL") ? Theme.down : Theme.btnStart

@@ -1307,6 +1307,33 @@ void BotController::refreshStats()
     emit statsChanged();
     emit equityChanged();
 }
+void BotController::resetStats()
+{
+    m_stats = QVariantMap{
+        {QStringLiteral("total_trades"), 0},
+        {QStringLiteral("wins"), 0},
+        {QStringLiteral("losses"), 0},
+        {QStringLiteral("breakeven"), 0},
+        {QStringLiteral("win_rate"), 0.0},
+        {QStringLiteral("profit_factor"), 0.0},
+        {QStringLiteral("gross_profit"), 0.0},
+        {QStringLiteral("gross_loss"), 0.0},
+        {QStringLiteral("net_profit"), 0.0},
+        {QStringLiteral("avg_profit"), 0.0},
+        {QStringLiteral("avg_loss"), 0.0},
+        {QStringLiteral("max_profit"), 0.0},
+        {QStringLiteral("max_loss"), 0.0}
+    };
+    m_equityCurve.clear();
+    emit statsChanged();
+    emit equityChanged();
+    if (m_pyWorker) {
+        ManualCommand c;
+        c.action = "reset_stats";
+        m_pyWorker->enqueue(c);
+    }
+    emit logMessage(QStringLiteral("[STATS] Statistik performa trading dan kurva equity berhasil direset ke 0."));
+}
 void BotController::onAutoDisabled(const QString &reason)
 {
     setTradingState(false);

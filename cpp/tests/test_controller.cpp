@@ -177,6 +177,23 @@ private slots:
         QCOMPARE(ctrl.journal().size(), 0);
     }
 
+    void resetStats_clearsStatsAndEquity()
+    {
+        BotController ctrl;
+        QSignalSpy spyStats(&ctrl, &BotController::statsChanged);
+        QSignalSpy spyEquity(&ctrl, &BotController::equityChanged);
+
+        ctrl.resetStats();
+
+        QCOMPARE(spyStats.count(), 1);
+        QCOMPARE(spyEquity.count(), 1);
+        QVariantMap s = ctrl.stats();
+        QCOMPARE(s.value(QStringLiteral("win_rate")).toDouble(), 0.0);
+        QCOMPARE(s.value(QStringLiteral("net_profit")).toDouble(), 0.0);
+        QCOMPARE(s.value(QStringLiteral("total_trades")).toInt(), 0);
+        QCOMPARE(ctrl.equityCurve().size(), 0);
+    }
+
     void updateManager_semverComparison()
     {
         QCOMPARE(UpdateManager::isNewerVersion(QStringLiteral("v1.0.1"), QStringLiteral("1.0.0")), true);

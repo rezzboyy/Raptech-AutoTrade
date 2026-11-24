@@ -11,7 +11,7 @@ Rectangle {
     border.color: Theme.border
     border.width: 1
 
-    property int selectedIndex: 7 // Default highlight baris sesuai foto referensi pengguna
+    property int selectedIndex: -1 // Tidak ada baris terpilih saat riwayat kosong
 
     // Menu Klik Kanan (Context Menu Trash / Clear)
     Menu {
@@ -35,32 +35,9 @@ Rectangle {
         }
     }
 
-    // Model riwayat transaksi (mendukung data real bot.journal & default sample riwayat)
+    // Model riwayat transaksi (dimuat murni dari bot.journal & transaksi real broker)
     ListModel {
         id: historyModel
-
-        Component.onCompleted: {
-            // Data awal default sesuai tabel foto referensi pengguna
-            append({ time: "20/11 12:01", ticket: "20307485738", source: "M5",   reason: "Momentum Break SELL",   lot: "0.01", closePrice: "3535.81", pnl: -5.98 })
-            append({ time: "20/11 10:22", ticket: "20307296688", source: "M5",   reason: "EMA Pullback SELL",     lot: "0.01", closePrice: "3584.33", pnl: 6.32 })
-            append({ time: "20/11 10:16", ticket: "20307287822", source: "M5",   reason: "EMA Pullback SELL",     lot: "0.01", closePrice: "3588.62", pnl: 5.89 })
-            append({ time: "20/11 10:05", ticket: "20307239658", source: "M5",   reason: "Momentum Break SELL",   lot: "0.01", closePrice: "3584.54", pnl: 1.47 })
-            append({ time: "20/11 10:00", ticket: "20307250196", source: "Step", reason: "-50% SL #20307239658",  lot: "0.02", closePrice: "3601.99", pnl: -5.14 })
-            append({ time: "20/11 09:45", ticket: "20307221622", source: "M5",   reason: "Momentum Break SELL",   lot: "0.01", closePrice: "3590.16", pnl: 5.27 })
-            append({ time: "20/11 09:42", ticket: "20307215298", source: "M5",   reason: "Momentum Break SELL",   lot: "0.01", closePrice: "3598.05", pnl: -5.40 })
-            append({ time: "20/11 09:35", ticket: "20307204282", source: "M5",   reason: "EMA Pullback SELL",     lot: "0.01", closePrice: "3607.25", pnl: 4.99 })
-            append({ time: "20/11 09:28", ticket: "20307199931", source: "M5",   reason: "Momentum Break SELL",   lot: "0.01", closePrice: "3614.36", pnl: 4.20 })
-            append({ time: "20/11 06:19", ticket: "20307063055", source: "M5",   reason: "Momentum Break SELL",   lot: "0.01", closePrice: "3655.26", pnl: 4.66 })
-            append({ time: "20/11 05:57", ticket: "20307052134", source: "M5",   reason: "Momentum Break SELL",   lot: "0.01", closePrice: "3660.41", pnl: 4.38 })
-            append({ time: "20/11 05:44", ticket: "20307043377", source: "M5",   reason: "EMA Pullback SELL",     lot: "0.01", closePrice: "3663.57", pnl: -4.43 })
-            append({ time: "20/11 05:31", ticket: "20307040801", source: "M5",   reason: "EMA Pullback SELL",     lot: "0.01", closePrice: "3664.94", pnl: 4.79 })
-            append({ time: "20/11 05:01", ticket: "20307021982", source: "M15",  reason: "Momentum Break SELL",   lot: "0.01", closePrice: "3662.62", pnl: 3.79 })
-            append({ time: "20/11 04:49", ticket: "20307008214", source: "M5",   reason: "Momentum Break SELL",   lot: "0.01", closePrice: "3670.67", pnl: 3.79 })
-            append({ time: "20/11 04:48", ticket: "20306996327", source: "M15",  reason: "EMA Pullback SELL",     lot: "0.01", closePrice: "3671.19", pnl: 3.91 })
-            append({ time: "20/11 04:47", ticket: "20306989190", source: "M5",   reason: "EMA Pullback SELL",     lot: "0.01", closePrice: "3672.22", pnl: 3.64 })
-            append({ time: "20/11 04:47", ticket: "20306949761", source: "M15",  reason: "EMA Pullback SELL",     lot: "0.01", closePrice: "3672.60", pnl: -3.51 })
-            append({ time: "20/11 04:05", ticket: "20306975102", source: "M5",   reason: "EMA Pullback SELL",     lot: "0.01", closePrice: "3675.15", pnl: -3.79 })
-        }
     }
 
     Connections {
@@ -116,6 +93,14 @@ Rectangle {
             clip: true
             model: historyModel
             ScrollBar.vertical: ThinScrollBar {}
+
+            Text {
+                anchors.centerIn: parent
+                visible: historyModel.count === 0
+                text: "Belum ada riwayat transaksi."
+                color: Theme.textMuted
+                font.pixelSize: 12
+            }
 
             delegate: Rectangle {
                 id: rowDelegate
@@ -237,7 +222,7 @@ Rectangle {
                 }
 
                 Text {
-                    text: "Win Rate: " + ((bot && bot.stats && bot.stats.win_rate) ? bot.stats.win_rate.toFixed(1) : "73.7") + "%"
+                    text: "Win Rate: " + ((bot && bot.stats && bot.stats.win_rate !== undefined) ? Number(bot.stats.win_rate).toFixed(1) : "0.0") + "%"
                     color: Theme.textSecondary
                     font.pixelSize: 11
                 }
@@ -265,7 +250,7 @@ Rectangle {
                         }
 
                         Text {
-                            text: "Bersihkan"
+                            text: "Bersihkan Riwayat"
                             color: historyModel.count > 0 ? (trashMouse.containsMouse ? Theme.down : Theme.textSecondary) : Theme.textMuted
                             font.pixelSize: 10
                             font.bold: true
@@ -288,6 +273,50 @@ Rectangle {
                     ToolTip.text: "Hapus seluruh catatan riwayat transaksi (Clear History)"
                 }
 
+                // Tombol Reset Stats
+                Rectangle {
+                    Layout.preferredHeight: 22
+                    Layout.preferredWidth: resetStatsBtnContent.implicitWidth + 14
+                    radius: 4
+                    color: resetStatsMouse.containsMouse ? "#1E293B" : Theme.surfaceAlt
+                    border.color: resetStatsMouse.containsMouse ? Theme.accent : Theme.divider
+                    border.width: 1
+
+                    RowLayout {
+                        id: resetStatsBtnContent
+                        anchors.centerIn: parent
+                        spacing: 5
+
+                        Image {
+                            source: "qrc:/assets/refresh.svg"
+                            sourceSize: Qt.size(11, 11)
+                            Layout.preferredWidth: 11
+                            Layout.preferredHeight: 11
+                            opacity: resetStatsMouse.containsMouse ? 1.0 : 0.75
+                        }
+
+                        Text {
+                            text: "Reset Stats"
+                            color: resetStatsMouse.containsMouse ? Theme.accent : Theme.textSecondary
+                            font.pixelSize: 10
+                            font.bold: true
+                        }
+                    }
+
+                    MouseArea {
+                        id: resetStatsMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (bot) bot.resetStats()
+                        }
+                    }
+
+                    ToolTip.visible: resetStatsMouse.containsMouse
+                    ToolTip.text: "Reset seluruh statistik performa (Win Rate, Daily PnL, Total Trades) ke 0"
+                }
+
                 Item { Layout.fillWidth: true }
 
                 Text {
@@ -297,7 +326,7 @@ Rectangle {
                 }
 
                 Text {
-                    readonly property double totalPnL: (bot && bot.stats && bot.stats.net_profit) ? bot.stats.net_profit : 97.85
+                    readonly property double totalPnL: (bot && bot.stats && bot.stats.net_profit !== undefined) ? Number(bot.stats.net_profit) : 0.0
                     text: (totalPnL >= 0 ? "$+" : "$-") + Math.abs(totalPnL).toFixed(2)
                     color: totalPnL >= 0 ? Theme.profit : Theme.loss
                     font.pixelSize: 12

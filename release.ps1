@@ -120,7 +120,7 @@ if (Test-Path $JUNC) {
 }
 
 # 2a. Python Unit Tests (pytest)
-Write-Host "      --> Menjalankan 290 Unit Test Python Backend..." -ForegroundColor Gray
+Write-Host "      --> Menjalankan 291 Unit Test Python Backend..." -ForegroundColor Gray
 $env:PYTHONPATH = "$scriptDir\py_backend"
 $pyTestOutput = & pytest "$scriptDir\py_backend\tests" -q 2>&1
 if ($LASTEXITCODE -ne 0) {
@@ -160,6 +160,10 @@ Write-Host "      Quality Gate LOLOS 100%! Seluruh pengujian C++ & Python hijau.
 
 # 3. Compile Production Executable & Build Distribution Package
 Write-Host "`n[3/5] Mengompilasi Biner & Paket Distribusi Standalone..." -ForegroundColor Yellow
+
+# Bersihkan catatan log & cache sebelum pemaketan agar rilis 100% bersih (clean history)
+if (Test-Path "$scriptDir\logs\bot.log") { Clear-Content "$scriptDir\logs\bot.log" -ErrorAction SilentlyContinue }
+Get-ChildItem -Path "$scriptDir\py_backend" -Include "*.pyc", "__pycache__" -Recurse | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 & powershell -ExecutionPolicy Bypass -File "$JUNC\deploy.ps1"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Error: Eksekusi deploy.ps1 gagal!" -ForegroundColor Red
@@ -243,31 +247,28 @@ $Notes
 ### 📦 Berkas Distribusi Produksi:
 - **Windows Setup Wizard (Inno Setup)**: `XTradingEngine_Setup_v$targetVersion.exe` ($setupSizeMb MB)
   - SHA-256: $setupHash
-- **Portable ZIP Package**: `XTradingEngine_Portable_v$targetVersion.zip` ($zipSizeMb MB)
-  - SHA-256: $zipHash
-- **Standalone Binary**: `XTradingEngine.exe` ($exeSizeMb MB)
-  - SHA-256: $exeHash
 
 ---
 ### 🔄 Cara Instalasi & Pembaruan Otomatis (OTA):
-1. **Instalasi Bersih (Direkomendasikan)**:
+1. **Instalasi Bersih (Setup Wizard)**:
    - Unduh dan jalankan installer resmi `XTradingEngine_Setup_v$targetVersion.exe`.
    - Setup Wizard akan membuat shortcut di Desktop dan Start Menu secara otomatis.
 2. **Pembaruan Otomatis (In-App OTA - Tanpa Perlu Install Ulang)**:
    - Pengguna yang sudah memasang aplikasi cukup membukanya, dialog **Pembaruan Aplikasi Tersedia** akan otomatis muncul.
    - Atau klik tombol **Update v$targetVersion** pada status bar aplikasi untuk memperbarui dalam 1-klik tanpa uninstall atau pasang ulang!
-3. **Versi Portabel Tanpa Instalasi**:
-   - Ekstrak berkas `XTradingEngine_Portable_v$targetVersion.zip` dan jalankan `XTradingEngine.exe` atau `Run_XTradingEngine.bat`.
 "@
 
 $notesFile = Join-Path $scriptDir "RELEASE_NOTES_temp.md"
 [System.IO.File]::WriteAllText($notesFile, $releaseNotes, [System.Text.Encoding]::UTF8)
 
-# Publish release with assets attached
+# Publish release with ONLY Windows Setup Wizard installer attached
 $assetsToUpload = @()
-if (Test-Path $setupPath) { $assetsToUpload += $setupPath }
-if (Test-Path $zipPath) { $assetsToUpload += $zipPath }
-if (Test-Path $exePath) { $assetsToUpload += $exePath }
+if (Test-Path $setupPath) {
+    $assetsToUpload += $setupPath
+} else {
+    Write-Host "Error: Setup Wizard $setupPath tidak ditemukan!" -ForegroundColor Red
+    exit 1
+}
 
 & gh release create $tag @assetsToUpload --title $releaseTitle --notes-file $notesFile
 

@@ -188,6 +188,24 @@ class TestRiskManagement(unittest.TestCase):
         self.assertTrue(breached)
         self.assertGreater(pct, 0.05)
 
+    def test_engine_reset_stats(self):
+        from src.bot_engine import BotEngine
+        from src.backends.base import TradingBackend
+        backend = MagicMock(spec=TradingBackend)
+        backend.history_deals.return_value = [
+            {"ticket": 101, "time": 1000.0, "net_profit": 50.0, "magic": 0},
+            {"ticket": 102, "time": 2000.0, "net_profit": -20.0, "magic": 0},
+        ]
+        eng = BotEngine(backend)
+        stats1 = eng.poll_stats()
+        self.assertEqual(stats1["total_trades"], 2)
+
+        eng.reset_stats()
+        stats2 = eng.poll_stats()
+        self.assertEqual(stats2["total_trades"], 0)
+        self.assertEqual(stats2["win_rate"], 0.0)
+        self.assertEqual(stats2["net_profit"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()
