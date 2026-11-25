@@ -178,12 +178,12 @@ ApplicationWindow {
             Layout.margins: 6
             spacing: 6
 
-            // ----- Kiri: Sidebar Controls & Telemetry (320px) -----
+            // ----- Kiri: Sidebar Controls & Telemetry (360px) -----
             SidebarControls {
                 id: sidebarControls
-                Layout.preferredWidth: 320
-                Layout.minimumWidth: 320
-                Layout.maximumWidth: 320
+                Layout.preferredWidth: 360
+                Layout.minimumWidth: 360
+                Layout.maximumWidth: 360
                 Layout.fillHeight: true
             }
 

@@ -14,6 +14,7 @@
 #include <QJsonObject>
 #include <QProcess>
 #include <QRegularExpression>
+#include <QSet>
 #include <QStandardPaths>
 #include <QTextStream>
 #include <QThread>
@@ -931,6 +932,170 @@ QVariantMap BotController::validateScript(const QString &source)
     if (brackets > 0) return {{"ok", false}, {"line", line}, {"message", QStringLiteral("Kurung siku '[' belum ditutup")}};
 
     return {{"ok", true}, {"line", 0}, {"message", QStringLiteral("Sintaks valid")}};
+}
+
+QVariantMap BotController::inspectScriptVariables(const QString &source)
+{
+    const QVariantMap base = validateScript(source);
+    const bool syntaxOk = base.value(QStringLiteral("ok")).toBool();
+    const int syntaxLine = base.value(QStringLiteral("line")).toInt();
+    const QString syntaxMsg = base.value(QStringLiteral("message")).toString();
+
+    static const QSet<QString> kValidSettings = {
+        "symbol", "timeframe", "timeframe_str", "volume", "lot", "risk", "risk_per_trade",
+        "sl_points", "sl", "tp_points", "tp", "sl_percent", "tp_percent", "sl_tp_mode",
+        "max_positions", "max_open_positions", "magic_number", "magic",
+        "trailing_stop_points", "trailing_stop", "trailing_step_points", "trailing_step",
+        "trailing_stop_enabled", "break_even_trigger_points", "break_even_points", "break_even",
+        "break_even_offset_points", "break_even_offset", "break_even_enabled",
+        "max_spread_points", "max_spread", "daily_drawdown_limit", "equity_stop_loss",
+        "max_consecutive_losses", "max_daily_trades", "max_exposure_lots",
+        "virtual_sltp_enabled", "loop_interval", "comment", "name", "strategy_name",
+        "trade_start_time", "start_time", "trade_end_time", "end_time",
+        "close_friday_hour", "active_days", "risk_reward_ratio", "rr_ratio", "risk_reward",
+        "atr_sl_mult", "atr_sl_multiplier", "atr_tp_mult", "atr_tp_multiplier",
+        "max_slippage_points", "slippage", "cooldown_bars", "min_bars_between_trades",
+        "one_trade_per_bar", "close_on_reversal", "min_margin_level",
+        "max_holding_bars", "holding_bars"
+    };
+
+    static const QSet<QString> kValidCtxMembers = {
+        "open", "high", "low", "close", "volume", "rates", "params", "settings", "symbol",
+        "position", "positions", "pending_orders", "state",
+        "balance", "equity", "margin", "free_margin", "margin_level",
+        "floating_profit", "unrealized_profit",
+        "bid", "ask", "point", "digits", "volume_min", "volume_max", "volume_step",
+        "stop_level", "freeze_level", "contract_size", "spread",
+        "time", "now", "hour", "minute", "weekday", "log",
+        "sma", "ema", "rsi", "stdev", "atr", "highest", "lowest",
+        "bbands", "macd", "wma", "stochastic", "adx", "cci", "vwap",
+        "williams_r", "obv", "mfi", "donchian", "parabolic_sar", "supertrend",
+        "ichimoku", "pivot_points", "crossover", "crossunder",
+        "buy", "sell", "close_position", "close_all", "close_side",
+        "buy_stop", "sell_stop", "buy_limit", "sell_limit",
+        "modify_order", "delete_order", "modify"
+    };
+
+    // Strip komentar (# dan //) untuk scanning identifier akurat
+    QString stripped;
+    stripped.reserve(source.size());
+    const QStringList rawLines = source.split('\n');
+    for (const QString &ln : rawLines) {
+        QString clean = ln;
+        bool inSq = false, inDq = false;
+        for (int i = 0; i < clean.size(); ++i) {
+            const QChar ch = clean[i];
+            if (ch == '\\') { ++i; continue; }
+            if (ch == '\'' && !inDq) inSq = !inSq;
+            else if (ch == '"' && !inSq) inDq = !inDq;
+            else if (!inSq && !inDq) {
+                if (ch == '#' || (ch == '/' && i + 1 < clean.size() && clean[i + 1] == '/')) {
+                    clean = clean.left(i);
+                    break;
+                }
+            }
+        }
+        stripped += clean + '\n';
+    }
+
+    const bool hasOnBar = QRegularExpression(QStringLiteral("\\b(def|function)\\s+on_bar\\s*\\(")).match(stripped).hasMatch();
+
+    // Ekstrak blok SETTINGS = { ... } bila ada
+    QStringList detectedSettings, unknownSettings;
+    const QRegularExpression reSettingsBlock(QStringLiteral("\\bSETTINGS\\s*=\\s*\\{([\\s\\S]*?)\\}"));
+    const QRegularExpressionMatch sm = reSettingsBlock.match(stripped);
+    if (sm.hasMatch()) {
+        const QString body = sm.captured(1);
+        const QRegularExpression reKey(QStringLiteral("[\"']([A-Za-z_][A-Za-z0-9_]*)[\"']\\s*:|\\b([A-Za-z_][A-Za-z0-9_]*)\\s*:"));
+        auto it = reKey.globalMatch(body);
+        while (it.hasNext()) {
+            const QRegularExpressionMatch km = it.next();
+            const QString k = (!km.captured(1).isEmpty() ? km.captured(1) : km.captured(2)).trimmed();
+            if (k.isEmpty() || detectedSettings.contains(k))
+                continue;
+            detectedSettings << k;
+            if (!kValidSettings.contains(k))
+                unknownSettings << k;
+        }
+    }
+
+    // Ekstrak PARAMS declared keys
+    QStringList declaredParams;
+    const QRegularExpression reParamsBlock(QStringLiteral("\\bPARAMS\\s*=\\s*\\[([\\s\\S]*?)\\]"));
+    const QRegularExpressionMatch pm = reParamsBlock.match(stripped);
+    if (pm.hasMatch()) {
+        const QRegularExpression rePKey(QStringLiteral("[\"']key[\"']\\s*:\\s*[\"']([A-Za-z_][A-Za-z0-9_]*)[\"']"));
+        auto it = rePKey.globalMatch(pm.captured(1));
+        while (it.hasNext()) {
+            const QString pk = it.next().captured(1);
+            if (!declaredParams.contains(pk))
+                declaredParams << pk;
+        }
+    }
+
+    // Ekstrak semua ctx.<member> dan ctx.params.<paramKey>
+    QStringList detectedCtx, unknownCtx, usedParams, undeclaredParams;
+    const QRegularExpression reCtx(QStringLiteral("\\bctx\\.([A-Za-z_][A-Za-z0-9_]*)"));
+    auto cit = reCtx.globalMatch(stripped);
+    while (cit.hasNext()) {
+        const QString mem = cit.next().captured(1);
+        if (!detectedCtx.contains(mem))
+            detectedCtx << mem;
+        if (!kValidCtxMembers.contains(mem) && !unknownCtx.contains(mem))
+            unknownCtx << mem;
+    }
+
+    const QRegularExpression reCtxParam(QStringLiteral("\\bctx\\.params\\.([A-Za-z_][A-Za-z0-9_]*)"));
+    auto cpit = reCtxParam.globalMatch(stripped);
+    while (cpit.hasNext()) {
+        const QString pk = cpit.next().captured(1);
+        if (!usedParams.contains(pk))
+            usedParams << pk;
+        if (!declaredParams.contains(pk) && !undeclaredParams.contains(pk))
+            undeclaredParams << pk;
+    }
+
+    const bool hasForbidden = QRegularExpression(QStringLiteral("\\b(__import__|eval|exec)\\b")).match(stripped).hasMatch();
+    const bool hasErrors = !syntaxOk || !hasOnBar || hasForbidden;
+    const bool hasWarnings = !unknownSettings.isEmpty() || !unknownCtx.isEmpty() || !undeclaredParams.isEmpty();
+
+    QString status = QStringLiteral("VALID");
+    if (hasErrors) status = QStringLiteral("ERROR");
+    else if (hasWarnings) status = QStringLiteral("PERINGATAN");
+
+    QString summary;
+    if (!syntaxOk) {
+        summary = QStringLiteral("Baris %1: %2").arg(syntaxLine).arg(syntaxMsg);
+    } else if (hasForbidden) {
+        summary = QStringLiteral("Ditemukan fungsi terlarang (__import__/eval/exec).");
+    } else if (!hasOnBar) {
+        summary = QStringLiteral("Fungsi wajib 'def on_bar(ctx):' belum didefinisikan.");
+    } else if (hasWarnings) {
+        summary = QStringLiteral("Sintaks OK, namun ada %1 variabel/atribut belum sesuai.")
+                      .arg(unknownSettings.size() + unknownCtx.size() + undeclaredParams.size());
+    } else {
+        summary = QStringLiteral("Sintaks valid, on_bar(ctx) siap, dan semua %1 variabel ctx/SETTINGS sesuai.")
+                      .arg(detectedSettings.size() + detectedCtx.size());
+    }
+
+    return QVariantMap{
+        {"ok", !hasErrors},
+        {"hasWarnings", hasWarnings},
+        {"status", status},
+        {"summary", summary},
+        {"syntaxOk", syntaxOk},
+        {"syntaxLine", syntaxLine},
+        {"syntaxMessage", syntaxMsg},
+        {"hasOnBar", hasOnBar},
+        {"hasForbidden", hasForbidden},
+        {"detectedSettings", detectedSettings},
+        {"unknownSettings", unknownSettings},
+        {"detectedCtxMembers", detectedCtx},
+        {"unknownCtxMembers", unknownCtx},
+        {"declaredParams", declaredParams},
+        {"usedParams", usedParams},
+        {"undeclaredParams", undeclaredParams}
+    };
 }
 
 void BotController::setScript(const QString &source)

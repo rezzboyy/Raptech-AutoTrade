@@ -254,6 +254,36 @@ private slots:
         ctrl.setTheme(origTheme);
         ctrl.setBackend(origBackend);
     }
+
+    void inspectScriptVariables_checksValidAndWarnings()
+    {
+        BotController ctrl;
+        const QString good = QStringLiteral(
+            "SETTINGS = {'volume': 0.05, 'max_spread_points': 40}\n"
+            "PARAMS = [{'key': 'fast', 'default': 12}]\n"
+            "def on_bar(ctx):\n"
+            "    v = ctx.ema(ctx.close, ctx.params.fast)\n"
+            "    if ctx.crossover(v, ctx.close):\n"
+            "        return ctx.buy()\n"
+            "    return None\n"
+        );
+        QVariantMap okRes = ctrl.inspectScriptVariables(good);
+        QCOMPARE(okRes["ok"].toBool(), true);
+        QCOMPARE(okRes["hasWarnings"].toBool(), false);
+        QCOMPARE(okRes["status"].toString(), QStringLiteral("VALID"));
+
+        const QString badVars = QStringLiteral(
+            "SETTINGS = {'typo_key': 1}\n"
+            "def on_bar(ctx):\n"
+            "    return ctx.non_existent_api()\n"
+        );
+        QVariantMap warnRes = ctrl.inspectScriptVariables(badVars);
+        QCOMPARE(warnRes["ok"].toBool(), true);
+        QCOMPARE(warnRes["hasWarnings"].toBool(), true);
+        QCOMPARE(warnRes["status"].toString(), QStringLiteral("PERINGATAN"));
+        QVERIFY(warnRes["unknownSettings"].toStringList().contains(QStringLiteral("typo_key")));
+        QVERIFY(warnRes["unknownCtxMembers"].toStringList().contains(QStringLiteral("non_existent_api")));
+    }
 };
 
 QTEST_MAIN(TestController)

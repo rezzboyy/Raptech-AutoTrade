@@ -469,6 +469,97 @@ def validate_detail(source: str) -> dict:
         return {"ok": False, "line": 0, "message": str(exc)}
 
 
+_KNOWN_SETTINGS_KEYS = frozenset({
+    "symbol", "timeframe", "timeframe_str", "volume", "lot", "risk", "risk_per_trade",
+    "sl_points", "sl", "tp_points", "tp", "sl_percent", "tp_percent", "sl_tp_mode",
+    "max_positions", "max_open_positions", "magic_number", "magic",
+    "trailing_stop_points", "trailing_stop", "trailing_step_points", "trailing_step",
+    "trailing_stop_enabled", "break_even_trigger_points", "break_even_points", "break_even",
+    "break_even_offset_points", "break_even_offset", "break_even_enabled",
+    "max_spread_points", "max_spread", "daily_drawdown_limit", "equity_stop_loss",
+    "max_consecutive_losses", "max_daily_trades", "max_exposure_lots",
+    "virtual_sltp_enabled", "loop_interval", "comment", "name", "strategy_name",
+    "trade_start_time", "start_time", "trade_end_time", "end_time",
+    "close_friday_hour", "active_days", "risk_reward_ratio", "rr_ratio", "risk_reward",
+    "atr_sl_mult", "atr_sl_multiplier", "atr_tp_mult", "atr_tp_multiplier",
+    "max_slippage_points", "slippage", "cooldown_bars", "min_bars_between_trades",
+    "one_trade_per_bar", "close_on_reversal", "min_margin_level",
+    "max_holding_bars", "holding_bars",
+})
+
+_KNOWN_CTX_MEMBERS = frozenset({
+    "open", "high", "low", "close", "volume", "rates", "params", "settings", "symbol",
+    "position", "positions", "pending_orders", "state",
+    "balance", "equity", "margin", "free_margin", "margin_level",
+    "floating_profit", "unrealized_profit",
+    "bid", "ask", "point", "digits", "volume_min", "volume_max", "volume_step",
+    "stop_level", "freeze_level", "contract_size", "spread",
+    "time", "now", "hour", "minute", "weekday", "log",
+    "sma", "ema", "rsi", "stdev", "atr", "highest", "lowest",
+    "bbands", "macd", "wma", "stochastic", "adx", "cci", "vwap",
+    "williams_r", "obv", "mfi", "donchian", "parabolic_sar", "supertrend",
+    "ichimoku", "pivot_points", "crossover", "crossunder",
+    "buy", "sell", "close_position", "close_all", "close_side",
+    "buy_stop", "sell_stop", "buy_limit", "sell_limit",
+    "modify_order", "delete_order", "modify",
+})
+
+
+def inspect_script_variables(source: str) -> dict:
+    """Inspeksi AST sintaks serta kesesuaian variabel SETTINGS, PARAMS, dan ctx.*."""
+    det = validate_detail(source)
+    if not det.get("ok"):
+        return {
+            "ok": False,
+            "has_warnings": False,
+            "status": "ERROR",
+            "line": det.get("line", 0),
+            "message": det.get("message", "Sintaks tidak valid"),
+            "unknown_settings": [],
+            "unknown_ctx": [],
+            "undeclared_params": [],
+        }
+
+    ns = compile_script(source)
+    raw_settings = ns.get("SETTINGS", {})
+    settings_keys = list(raw_settings.keys()) if isinstance(raw_settings, dict) else []
+    unknown_settings = [str(k) for k in settings_keys if str(k) not in _KNOWN_SETTINGS_KEYS]
+
+    declared_params = {
+        str(p.get("key")) for p in (ns.get("PARAMS") or [])
+        if isinstance(p, dict) and p.get("key")
+    }
+
+    tree = ast.parse(source)
+    unknown_ctx = []
+    undeclared_params = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute):
+            if isinstance(node.value, ast.Name) and node.value.id == "ctx":
+                if node.attr not in _KNOWN_CTX_MEMBERS and node.attr not in unknown_ctx:
+                    unknown_ctx.append(node.attr)
+            elif (
+                isinstance(node.value, ast.Attribute)
+                and isinstance(node.value.value, ast.Name)
+                and node.value.value.id == "ctx"
+                and node.value.attr == "params"
+            ):
+                if node.attr not in declared_params and node.attr not in undeclared_params:
+                    undeclared_params.append(node.attr)
+
+    has_warn = bool(unknown_settings or unknown_ctx or undeclared_params)
+    return {
+        "ok": True,
+        "has_warnings": has_warn,
+        "status": "PERINGATAN" if has_warn else "VALID",
+        "line": 0,
+        "message": "Sintaks dan variabel sesuai." if not has_warn else "Ada variabel belum sesuai.",
+        "unknown_settings": unknown_settings,
+        "unknown_ctx": unknown_ctx,
+        "undeclared_params": undeclared_params,
+    }
+
+
 # ----- Indikator (dihitung memakai pandas, diekspos sebagai list) -----
 
 def _series(src) -> pd.Series:

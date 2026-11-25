@@ -5,10 +5,10 @@ import QtQuick.Controls.Material
 import "."
 
 // SidebarControls.qml — Sidebar Kontrol Eksekusi Instan & Telemetri Real-Time
-// Desain 100% presisi mengikuti workstation Dark Cyber-Trading Terminal (Width: 320px)
+// Desain presisi workstation trading dengan lebar 360px & kontras tinggi
 Rectangle {
     id: root
-    width: 320
+    width: 360
     color: Theme.surface
     border.color: Theme.border
     border.width: 1
@@ -120,14 +120,12 @@ Rectangle {
                     }
                 }
 
-                Button {
-                    flat: true
-                    Layout.preferredWidth: 30
+                CButton {
+                    Layout.preferredWidth: 32
                     Layout.preferredHeight: 30
                     icon.source: "qrc:/assets/refresh.svg"
                     icon.width: 13
                     icon.height: 13
-                    icon.color: Theme.textSecondary
                     ToolTip.visible: hovered
                     ToolTip.text: "Refresh daftar simbol & harga"
                     onClicked: {
@@ -167,24 +165,27 @@ Rectangle {
                 // START Button
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 36
+                    Layout.preferredHeight: 40
                     radius: Theme.radiusSmall
-                    color: Theme.btnStart
+                    color: (bot && bot.connected)
+                           ? (startMouse.containsMouse ? Qt.lighter(Theme.btnStart, 1.08) : Theme.btnStart)
+                           : Qt.darker(Theme.btnStart, 1.12)
                     border.color: (bot && bot.trading) ? Theme.updateGlow : "transparent"
                     border.width: (bot && bot.trading) ? 2 : 0
-                    opacity: (bot && bot.connected) ? 1.0 : 0.6
 
                     Text {
                         anchors.centerIn: parent
                         text: "START"
-                        font.pixelSize: 12
+                        font.pixelSize: 13
                         font.bold: true
                         color: "#FFFFFF"
                     }
 
                     MouseArea {
+                        id: startMouse
                         anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
+                        hoverEnabled: true
+                        cursorShape: (bot && bot.connected) ? Qt.PointingHandCursor : Qt.ArrowCursor
                         enabled: bot ? bot.connected : false
                         onClicked: {
                             if (bot) bot.setTrading(true)
@@ -195,24 +196,27 @@ Rectangle {
                 // STOP Button
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 36
+                    Layout.preferredHeight: 40
                     radius: Theme.radiusSmall
-                    color: Theme.btnStop
+                    color: (bot && bot.connected)
+                           ? (stopMouse.containsMouse ? Qt.lighter(Theme.btnStop, 1.08) : Theme.btnStop)
+                           : Qt.darker(Theme.btnStop, 1.12)
                     border.color: (bot && !bot.trading && bot.connected) ? "#FF8A80" : "transparent"
                     border.width: (bot && !bot.trading && bot.connected) ? 2 : 0
-                    opacity: (bot && bot.connected) ? 1.0 : 0.6
 
                     Text {
                         anchors.centerIn: parent
                         text: "STOP"
-                        font.pixelSize: 12
+                        font.pixelSize: 13
                         font.bold: true
                         color: "#FFFFFF"
                     }
 
                     MouseArea {
+                        id: stopMouse
                         anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
+                        hoverEnabled: true
+                        cursorShape: (bot && bot.connected) ? Qt.PointingHandCursor : Qt.ArrowCursor
                         enabled: bot ? bot.connected : false
                         onClicked: {
                             if (bot) bot.setTrading(false)
@@ -228,8 +232,8 @@ Rectangle {
 
                 // Lot Field
                 Rectangle {
-                    Layout.preferredWidth: 72
-                    Layout.preferredHeight: 36
+                    Layout.preferredWidth: 84
+                    Layout.preferredHeight: 40
                     radius: Theme.radiusSmall
                     color: Theme.surfaceAlt
                     border.color: Theme.border
@@ -237,12 +241,13 @@ Rectangle {
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.margins: 4
-                        spacing: 2
+                        anchors.margins: 6
+                        spacing: 3
 
                         Text {
                             text: "Lot:"
-                            font.pixelSize: 10
+                            font.pixelSize: 11
+                            font.bold: true
                             color: Theme.textMuted
                         }
 
@@ -250,7 +255,7 @@ Rectangle {
                             id: lotInput
                             Layout.fillWidth: true
                             text: "0.01"
-                            font.pixelSize: 11
+                            font.pixelSize: 12
                             font.bold: true
                             font.family: "Consolas"
                             color: Theme.textPrimary
@@ -263,22 +268,25 @@ Rectangle {
                 // BUY Button
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 36
+                    Layout.preferredHeight: 40
                     radius: Theme.radiusSmall
-                    color: Theme.btnBuy
-                    opacity: (bot && bot.connected) ? 1.0 : 0.6
+                    color: (bot && bot.connected)
+                           ? (buyMouse.containsMouse ? Qt.lighter(Theme.btnBuy, 1.08) : Theme.btnBuy)
+                           : Qt.darker(Theme.btnBuy, 1.12)
 
                     Text {
                         anchors.centerIn: parent
                         text: "BUY"
-                        font.pixelSize: 12
+                        font.pixelSize: 13
                         font.bold: true
                         color: "#FFFFFF"
                     }
 
                     MouseArea {
+                        id: buyMouse
                         anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
+                        hoverEnabled: true
+                        cursorShape: (bot && bot.connected) ? Qt.PointingHandCursor : Qt.ArrowCursor
                         enabled: bot ? bot.connected : false
                         onClicked: {
                             var lotVal = root.parseLot()
@@ -290,22 +298,25 @@ Rectangle {
                 // SELL Button
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 36
+                    Layout.preferredHeight: 40
                     radius: Theme.radiusSmall
-                    color: Theme.btnSell
-                    opacity: (bot && bot.connected) ? 1.0 : 0.6
+                    color: (bot && bot.connected)
+                           ? (sellMouse.containsMouse ? Qt.lighter(Theme.btnSell, 1.08) : Theme.btnSell)
+                           : Qt.darker(Theme.btnSell, 1.12)
 
                     Text {
                         anchors.centerIn: parent
                         text: "SELL"
-                        font.pixelSize: 12
+                        font.pixelSize: 13
                         font.bold: true
                         color: "#FFFFFF"
                     }
 
                     MouseArea {
+                        id: sellMouse
                         anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
+                        hoverEnabled: true
+                        cursorShape: (bot && bot.connected) ? Qt.PointingHandCursor : Qt.ArrowCursor
                         enabled: bot ? bot.connected : false
                         onClicked: {
                             var lotVal = root.parseLot()
@@ -318,15 +329,16 @@ Rectangle {
             // ================= 4. HEDGE Action Button =================
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 36
+                Layout.preferredHeight: 40
                 radius: Theme.radiusSmall
-                color: Theme.btnHedge
-                opacity: (bot && bot.connected) ? 1.0 : 0.6
+                color: (bot && bot.connected)
+                       ? (hedgeHover.containsMouse ? Qt.lighter(Theme.btnHedge, 1.08) : Theme.btnHedge)
+                       : Qt.darker(Theme.btnHedge, 1.12)
 
                 Text {
                     anchors.centerIn: parent
                     text: "HEDGE BUY+SELL"
-                    font.pixelSize: 12
+                    font.pixelSize: 13
                     font.bold: true
                     color: "#FFFFFF"
                 }
@@ -334,7 +346,7 @@ Rectangle {
                 MouseArea {
                     id: hedgeHover
                     anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
+                    cursorShape: (bot && bot.connected) ? Qt.PointingHandCursor : Qt.ArrowCursor
                     hoverEnabled: true
                     enabled: bot ? bot.connected : false
                     onClicked: {
@@ -354,8 +366,8 @@ Rectangle {
 
                 // Max OP SpinBox
                 Rectangle {
-                    Layout.preferredWidth: 72
-                    Layout.preferredHeight: 36
+                    Layout.preferredWidth: 84
+                    Layout.preferredHeight: 40
                     radius: Theme.radiusSmall
                     color: Theme.surfaceAlt
                     border.color: Theme.border
@@ -363,12 +375,13 @@ Rectangle {
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.margins: 4
-                        spacing: 2
+                        anchors.margins: 6
+                        spacing: 3
 
                         Text {
                             text: "Max:"
-                            font.pixelSize: 10
+                            font.pixelSize: 11
+                            font.bold: true
                             color: Theme.textMuted
                         }
 
@@ -376,7 +389,7 @@ Rectangle {
                             id: maxOpInput
                             Layout.fillWidth: true
                             text: "6"
-                            font.pixelSize: 11
+                            font.pixelSize: 12
                             font.bold: true
                             font.family: "Consolas"
                             color: Theme.textPrimary
@@ -389,15 +402,16 @@ Rectangle {
                 // CLOSE ALL RESET Button
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 36
+                    Layout.preferredHeight: 40
                     radius: Theme.radiusSmall
-                    color: Theme.btnCloseAll
-                    opacity: (bot && bot.connected) ? 1.0 : 0.6
+                    color: (bot && bot.connected)
+                           ? (closeAllHover.containsMouse ? Qt.lighter(Theme.btnCloseAll, 1.08) : Theme.btnCloseAll)
+                           : Qt.darker(Theme.btnCloseAll, 1.12)
 
                     Text {
                         anchors.centerIn: parent
                         text: "CLOSE ALL RESET"
-                        font.pixelSize: 11
+                        font.pixelSize: 12
                         font.bold: true
                         color: "#FFFFFF"
                     }
@@ -405,7 +419,7 @@ Rectangle {
                     MouseArea {
                         id: closeAllHover
                         anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
+                        cursorShape: (bot && bot.connected) ? Qt.PointingHandCursor : Qt.ArrowCursor
                         hoverEnabled: true
                         enabled: bot ? bot.connected : false
                         onClicked: {

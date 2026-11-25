@@ -19,6 +19,24 @@ Rectangle {
     property bool simRunning: false
     property bool hasSimResult: false
     property var simResult: ({})
+    property var syntaxReport: ({
+        ok: false,
+        hasWarnings: false,
+        status: "VALID",
+        summary: "",
+        syntaxOk: false,
+        syntaxLine: 0,
+        syntaxMessage: "",
+        hasOnBar: false,
+        hasForbidden: false,
+        detectedSettings: [],
+        unknownSettings: [],
+        detectedCtxMembers: [],
+        unknownCtxMembers: [],
+        declaredParams: [],
+        usedParams: [],
+        undeclaredParams: []
+    })
     readonly property bool botTrading: bot ? bot.trading : false
     readonly property bool botConnected: bot ? bot.connected : false
 
@@ -106,9 +124,26 @@ Rectangle {
     }
 
     function runValidate() {
-        var r = bot.validateScript(editor.text)
-        if (r.ok) { hl.errorLine = -1; root.errorLine = 0; setStatus("✓ Skrip valid.", true) }
-        else { hl.errorLine = r.line; root.errorLine = r.line; setStatus("✗ Baris " + r.line + ": " + r.message, false) }
+        var r = bot.inspectScriptVariables(editor.text)
+        root.syntaxReport = r
+        if (!r.syntaxOk) {
+            hl.errorLine = r.syntaxLine; root.errorLine = r.syntaxLine
+            setStatus("✗ Baris " + r.syntaxLine + ": " + r.syntaxMessage, false)
+        } else if (!r.ok) {
+            hl.errorLine = -1; root.errorLine = 0
+            setStatus("✗ " + r.summary, false)
+        } else if (r.hasWarnings) {
+            hl.errorLine = -1; root.errorLine = 0
+            statusText.text = "⚠ " + r.summary; statusText.color = Theme.warn
+        } else {
+            hl.errorLine = -1; root.errorLine = 0
+            setStatus("✓ " + r.summary, true)
+        }
+        return r
+    }
+    function openSyntaxCheck() {
+        root.runValidate()
+        syntaxCheckDialog.open()
     }
     function setStatus(msg, ok) { statusText.text = msg; statusText.color = ok ? Theme.up : Theme.down }
     function insertSnippet(t) {
@@ -145,7 +180,9 @@ Rectangle {
                 }
                 CButton { text: "Bantuan API"; icon.source: "qrc:/assets/log.svg"; icon.width: 12; icon.height: 12; Layout.preferredHeight: 28; font.pixelSize: 11; onClicked: apiHelpDialog.open() }
                 CButton { text: "SETTINGS"; icon.source: "qrc:/assets/strategy.svg"; icon.width: 12; icon.height: 12; Layout.preferredHeight: 28; font.pixelSize: 11; onClicked: settingsHelpDialog.open() }
-                CButton { text: "Template"; Layout.preferredHeight: 28; font.pixelSize: 11; onClicked: editor.text = bot.scriptTemplate() }
+                CButton { text: "Template"; icon.source: "qrc:/assets/layers.svg"; icon.width: 12; icon.height: 12; Layout.preferredHeight: 28; font.pixelSize: 11; onClicked: editor.text = bot.scriptTemplate() }
+                CButton { text: "Cek Sintaks"; icon.source: "qrc:/assets/check.svg"; icon.width: 12; icon.height: 12; Layout.preferredHeight: 28; font.pixelSize: 11; onClicked: root.openSyntaxCheck() }
+                CButton { text: root.simRunning ? "Menguji..." : "Uji Simulasi"; icon.source: "qrc:/assets/bolt.svg"; icon.width: 12; icon.height: 12; Layout.preferredHeight: 28; font.pixelSize: 11; onClicked: simDialog.open() }
             }
             Text {
                 Layout.fillWidth: true
@@ -264,40 +301,8 @@ Rectangle {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
-                CButton { text: "Validasi"; icon.source: "qrc:/assets/activity.svg"; icon.width: 13; icon.height: 13; Layout.fillWidth: true; Layout.preferredHeight: 34; onClicked: root.runValidate() }
+                CButton { text: "Validasi"; icon.source: "qrc:/assets/activity.svg"; icon.width: 13; icon.height: 13; Layout.fillWidth: true; Layout.preferredHeight: 34; onClicked: root.openSyntaxCheck() }
                 CButton { text: "Simpan & Terapkan Skrip"; bg: Theme.accent; fg: "#ffffff"; icon.source: "qrc:/assets/save.svg"; icon.width: 14; icon.height: 14; Layout.fillWidth: true; Layout.preferredHeight: 34; onClicked: { bot.setScript(editor.text); root.setStatus("Skrip disimpan & diterapkan (custom_script).", true) } }
-            }
-
-            // ===== Uji Simulasi Cepat (Terisolasi) =====
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 6
-                CCombo {
-                    id: simScenarioCombo
-                    Layout.preferredHeight: 32
-                    Layout.preferredWidth: 118
-                    Layout.fillWidth: false
-                    model: ["volatile", "uptrend", "downtrend", "sideways", "spread_spike"]
-                }
-                CCombo {
-                    id: simBarsCombo
-                    Layout.preferredHeight: 32
-                    Layout.preferredWidth: 94
-                    Layout.fillWidth: false
-                    model: ["120 bar", "240 bar", "360 bar"]
-                }
-                CButton {
-                    text: root.simRunning ? "Menguji..." : "Uji Simulasi"
-                    bg: Theme.warn; fg: "#ffffff"
-                    icon.source: "qrc:/assets/bolt.svg"; icon.width: 12; icon.height: 12
-                    Layout.fillWidth: true; Layout.preferredHeight: 32
-                    enabled: !root.simRunning && bot
-                    onClicked: {
-                        root.simRunning = true
-                        var barCnt = parseInt(simBarsCombo.currentText) || 120
-                        bot.runScriptSimulation(editor.text, simScenarioCombo.currentText, barCnt, 10000.0, 25)
-                    }
-                }
             }
 
             Rectangle {
@@ -402,6 +407,223 @@ Rectangle {
                             }
                             CButton { text: "Sisipkan"; font.pixelSize: 10; implicitHeight: 26; height: 26; width: 84; onClicked: { root.insertSnippet(modelData.snippet); apiHelpDialog.close() } }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    // ===== Dialog Cek Sintaks & Kesesuaian Variabel =====
+    Dialog {
+        id: syntaxCheckDialog
+        title: "Cek Sintaks & Variabel Skrip"
+        modal: true
+        width: Math.min(root.width - 40, 480)
+        height: Math.min(root.height - 60, 520)
+        anchors.centerIn: Overlay.overlay
+        standardButtons: Dialog.Close
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 10
+
+            Rectangle {
+                Layout.fillWidth: true
+                radius: 8
+                implicitHeight: synBannerCol.implicitHeight + 16
+                color: root.syntaxReport.status === "ERROR"
+                       ? Theme.bannerErrBg
+                       : (root.syntaxReport.status === "PERINGATAN" ? Theme.bannerWarnBg : Theme.bannerOkBg)
+                border.color: root.syntaxReport.status === "ERROR"
+                              ? Theme.down
+                              : (root.syntaxReport.status === "PERINGATAN" ? Theme.badgeWarnBorder : Theme.up)
+                border.width: 1
+
+                ColumnLayout {
+                    id: synBannerCol
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    spacing: 4
+                    Text {
+                        font.pixelSize: 12; font.bold: true
+                        color: root.syntaxReport.status === "ERROR"
+                               ? Theme.down
+                               : (root.syntaxReport.status === "PERINGATAN" ? Theme.badgeWarnText : Theme.up)
+                        text: root.syntaxReport.status === "ERROR"
+                              ? "ERROR SINTAKS / STRUKTUR SKRIP"
+                              : (root.syntaxReport.status === "PERINGATAN"
+                                 ? "SINTAKS VALID — ADA VARIABEL PERLU DIPERIKSA"
+                                 : "LULUS — SINTAKS & VARIABEL SESUAI")
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: 11
+                        color: Theme.textPrimary
+                        text: root.syntaxReport.summary || ""
+                    }
+                }
+            }
+
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                ScrollBar.vertical: ThinScrollBar {}
+
+                ColumnLayout {
+                    width: syntaxCheckDialog.availableWidth
+                    spacing: 8
+
+                    Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: 11
+                        color: root.syntaxReport.hasOnBar ? Theme.up : Theme.down
+                        text: (root.syntaxReport.hasOnBar ? "✓ Fungsi on_bar(ctx) ditemukan." : "✗ Fungsi wajib 'def on_bar(ctx):' belum ditemukan.")
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: 11
+                        color: (root.syntaxReport.unknownSettings && root.syntaxReport.unknownSettings.length > 0) ? Theme.warn : Theme.textSecondary
+                        text: "SETTINGS terdeteksi (" + ((root.syntaxReport.detectedSettings || []).length) + "): "
+                              + ((root.syntaxReport.detectedSettings || []).length > 0 ? (root.syntaxReport.detectedSettings || []).join(", ") : "—")
+                              + ((root.syntaxReport.unknownSettings && root.syntaxReport.unknownSettings.length > 0)
+                                 ? ("\n⚠ Key SETTINGS belum dikenali: " + root.syntaxReport.unknownSettings.join(", "))
+                                 : "")
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: 11
+                        color: (root.syntaxReport.unknownCtxMembers && root.syntaxReport.unknownCtxMembers.length > 0) ? Theme.warn : Theme.textSecondary
+                        text: "Variabel/API ctx.* terpakai (" + ((root.syntaxReport.detectedCtxMembers || []).length) + "): "
+                              + ((root.syntaxReport.detectedCtxMembers || []).length > 0 ? (root.syntaxReport.detectedCtxMembers || []).join(", ") : "—")
+                              + ((root.syntaxReport.unknownCtxMembers && root.syntaxReport.unknownCtxMembers.length > 0)
+                                 ? ("\n⚠ Atribut ctx.* belum dikenali: " + root.syntaxReport.unknownCtxMembers.join(", "))
+                                 : "")
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: 11
+                        color: (root.syntaxReport.undeclaredParams && root.syntaxReport.undeclaredParams.length > 0) ? Theme.warn : Theme.textSecondary
+                        text: "PARAMS dideklarasikan: "
+                              + ((root.syntaxReport.declaredParams || []).length > 0 ? (root.syntaxReport.declaredParams || []).join(", ") : "—")
+                              + ((root.syntaxReport.undeclaredParams && root.syntaxReport.undeclaredParams.length > 0)
+                                 ? ("\n⚠ ctx.params.* belum ada di PARAMS: " + root.syntaxReport.undeclaredParams.join(", "))
+                                 : "")
+                    }
+                }
+            }
+
+            CButton {
+                text: "Periksa Ulang"
+                bg: Theme.accent; fg: "#ffffff"
+                icon.source: "qrc:/assets/check.svg"; icon.width: 12; icon.height: 12
+                Layout.fillWidth: true; Layout.preferredHeight: 32
+                onClicked: root.runValidate()
+            }
+        }
+    }
+
+    // ===== Dialog Mode Uji / Simulasi Skrip =====
+    Dialog {
+        id: simDialog
+        title: "Mode Uji / Simulasi Skrip (Terisolasi)"
+        modal: true
+        width: Math.min(root.width - 40, 460)
+        height: Math.min(root.height - 60, 440)
+        anchors.centerIn: Overlay.overlay
+        standardButtons: Dialog.Close
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 10
+
+            Text {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                font.pixelSize: 11
+                color: Theme.textSecondary
+                text: "Menjalankan skrip pada pasar sintetis terisolasi (tanpa menyentuh akun Demo/Real MT5) untuk memastikan logika order, SL/TP, dan proteksi berjalan benar."
+            }
+
+            RowLayout {
+                Layout.fillWidth: true; spacing: 8
+                Label { text: "Skenario"; color: Theme.textSecondary; Layout.preferredWidth: 88; font.pixelSize: 11 }
+                CCombo { id: simScenarioCombo; model: ["volatile", "uptrend", "downtrend", "sideways", "spread_spike"] }
+            }
+            RowLayout {
+                Layout.fillWidth: true; spacing: 8
+                Label { text: "Jumlah Bar"; color: Theme.textSecondary; Layout.preferredWidth: 88; font.pixelSize: 11 }
+                CCombo { id: simBarsCombo; model: ["120 bar", "240 bar", "360 bar"] }
+            }
+            RowLayout {
+                Layout.fillWidth: true; spacing: 8
+                Label { text: "Saldo Awal"; color: Theme.textSecondary; Layout.preferredWidth: 88; font.pixelSize: 11 }
+                CField { id: simBalField; text: "10000"; placeholderText: "USD (min 100)" }
+            }
+            RowLayout {
+                Layout.fillWidth: true; spacing: 8
+                Label { text: "Spread (pts)"; color: Theme.textSecondary; Layout.preferredWidth: 88; font.pixelSize: 11 }
+                CField { id: simSpreadField; text: "25"; placeholderText: "points" }
+            }
+
+            CButton {
+                text: root.simRunning ? "Sedang Menguji..." : "Jalankan Simulasi"
+                bg: Theme.accent; fg: "#ffffff"
+                icon.source: "qrc:/assets/bolt.svg"; icon.width: 12; icon.height: 12
+                Layout.fillWidth: true; Layout.preferredHeight: 34
+                enabled: !root.simRunning && bot
+                onClicked: {
+                    root.simRunning = true
+                    var barCnt = parseInt(simBarsCombo.currentText) || 120
+                    var balVal = parseFloat(simBalField.text || "10000") || 10000.0
+                    var spVal = parseInt(simSpreadField.text || "25") || 25
+                    bot.runScriptSimulation(editor.text, simScenarioCombo.currentText, barCnt, balVal, spVal)
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                visible: root.hasSimResult
+                radius: 8
+                color: (root.simResult.ok === true) ? Theme.bannerOkBg : Theme.bannerErrBg
+                border.color: (root.simResult.ok === true) ? Theme.up : Theme.down
+                border.width: 1
+                implicitHeight: simDlgResCol.implicitHeight + 14
+
+                ColumnLayout {
+                    id: simDlgResCol
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 3
+                    Text {
+                        Layout.fillWidth: true
+                        font.pixelSize: 11; font.bold: true
+                        color: (root.simResult.ok === true) ? Theme.up : Theme.down
+                        text: (root.simResult.ok === true)
+                              ? ("HASIL (" + (root.simResult.symbol || "") + " • " + (root.simResult.scenario || "") + ")")
+                              : "SIMULASI GAGAL"
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: 10
+                        color: Theme.textPrimary
+                        text: (root.simResult.ok === true)
+                              ? ("Trades: " + (root.simResult.trades_count || 0)
+                                 + " | Open: " + (root.simResult.open_positions || 0)
+                                 + " | Pending: " + (root.simResult.pending_orders || 0)
+                                 + " | WinRate: " + Number(root.simResult.win_rate || 0).toFixed(1) + "%"
+                                 + " | Net: " + (Number(root.simResult.net_profit || 0) >= 0 ? "+$" : "-$") + Math.abs(Number(root.simResult.net_profit || 0)).toFixed(2)
+                                 + " | MaxDD: " + Number(root.simResult.max_drawdown_pct || 0).toFixed(2) + "%")
+                              : String(root.simResult.error || "Kesalahan tidak diketahui")
                     }
                 }
             }

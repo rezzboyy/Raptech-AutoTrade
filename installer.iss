@@ -2,7 +2,7 @@
 ; High-Performance MetaTrader 5 Algorithmic Trading Desktop Engine
 
 #define MyAppName "X Trading Engine"
-#define MyAppVersion "3.2.6"
+#define MyAppVersion "3.2.7"
 #define MyAppPublisher "X Trading"
 #define MyAppURL "https://github.com/rezzboyy/Raptech-AutoTrade"
 #define MyAppExeName "XTradingEngine.exe"
@@ -53,7 +53,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [InstallDelete]
-; Bersihkan sisa script strategi lama saat instalasi baru maupun pembaruan OTA
+; Bersihkan runtime Python/bridge lama & sisa script strategi sebelum memasang versi baru
+Type: filesandordirs; Name: "{app}\py_bridge"
+Type: filesandordirs; Name: "{app}\py_backend"
 Type: filesandordirs; Name: "{app}\scripts"
 Type: filesandordirs; Name: "{app}\py_backend\strategies\scripts"
 

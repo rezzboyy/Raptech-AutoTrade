@@ -187,3 +187,38 @@ def test_bridge_service_run_script_simulation_event():
     })
     assert res["ok"] is True
     assert any(ev == "simulationResult" and payload["ok"] is True for ev, payload in events)
+
+
+def test_inspect_script_variables_valid_and_warnings():
+    from strategies.script_runtime import inspect_script_variables
+
+    valid_src = '''
+SETTINGS = {"symbol": "XAUUSDm", "volume": 0.05, "max_spread_points": 50}
+PARAMS = [{"key": "ema_fast", "default": 12}]
+
+def on_bar(ctx):
+    f = ctx.ema(ctx.close, ctx.params.ema_fast)
+    if len(ctx.positions) == 0 and f:
+        return ctx.buy()
+    return None
+'''
+    r_ok = inspect_script_variables(valid_src)
+    assert r_ok["ok"] is True
+    assert r_ok["has_warnings"] is False
+    assert r_ok["status"] == "VALID"
+
+    warn_src = '''
+SETTINGS = {"unknown_opt": 123}
+PARAMS = []
+
+def on_bar(ctx):
+    x = ctx.params.missing_param
+    return ctx.unknown_method()
+'''
+    r_warn = inspect_script_variables(warn_src)
+    assert r_warn["ok"] is True
+    assert r_warn["has_warnings"] is True
+    assert r_warn["status"] == "PERINGATAN"
+    assert "unknown_opt" in r_warn["unknown_settings"]
+    assert "unknown_method" in r_warn["unknown_ctx"]
+    assert "missing_param" in r_warn["undeclared_params"]

@@ -24,7 +24,7 @@ Rectangle {
         contentItem: Text {
             text: tabBtn.text
             font: tabBtn.font
-            color: tabBtn.checked ? Theme.textPrimary : Theme.textSecondary
+            color: tabBtn.checked ? Theme.accent : Theme.textMuted
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
         }

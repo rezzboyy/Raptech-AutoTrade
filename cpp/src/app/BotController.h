@@ -113,6 +113,7 @@ public slots:
     bool loginAndConnect(const QVariantMap &creds, const QString &saveName = QString());
     QString scriptTemplate();
     QVariantMap validateScript(const QString &source);
+    QVariantMap inspectScriptVariables(const QString &source);
     void setScript(const QString &source);
     QString currentScript();
     QVariantList apiReference();
