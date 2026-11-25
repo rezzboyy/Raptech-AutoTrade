@@ -89,5 +89,6 @@ private:
     long long m_nextId = 1;
     bool m_connected = false;
     bool m_trading = false;
+    bool m_stopping = false;
     QString m_chartSymbol;
 };

@@ -13,6 +13,9 @@ Rectangle {
     border.color: Theme.border
 
     readonly property bool botConnected: bot ? bot.connected : false
+    readonly property bool authBusy: bot ? bot.authBusy : false
+    readonly property string authAction: bot ? bot.authAction : ""
+    readonly property string authMessage: bot ? bot.authMessage : ""
     property var profileList: []
     property var mcpProfileList: []
     property string backendMode: bot ? bot.backend : "mcp"
@@ -388,11 +391,15 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: 8
                 CButton {
-                    text: root.botConnected ? "Terhubung" : (root.backendMode === "sim" ? "Mulai Simulasi" : "Login & Connect")
+                    text: {
+                        if (root.authBusy && root.authAction === "login") return "Menghubungkan..."
+                        if (root.botConnected) return "Terhubung"
+                        return (root.backendMode === "sim" ? "Mulai Simulasi" : "Login & Connect")
+                    }
                     icon.source: "qrc:/assets/power.svg"; icon.width: 15; icon.height: 15
-                    bg: root.botConnected ? Theme.surfaceAlt : Theme.accent
-                    fg: "#ffffff"
-                    enabled: !root.botConnected
+                    bg: (root.botConnected || root.authBusy) ? Theme.surfaceAlt : Theme.accent
+                    fg: (root.botConnected || root.authBusy) ? Theme.textSecondary : "#ffffff"
+                    enabled: !root.botConnected && !root.authBusy
                     Layout.fillWidth: true
                     Layout.preferredHeight: 40
                     font.bold: true
@@ -417,14 +424,60 @@ Rectangle {
                     }
                 }
                 CButton {
-                    text: "Logout"
+                    text: (root.authBusy && root.authAction === "logout") ? "Logout..." : "Logout"
                     icon.source: "qrc:/assets/link-off.svg"; icon.width: 14; icon.height: 14
                     bg: Theme.down; fg: "#ffffff"
-                    visible: root.botConnected
-                    enabled: root.botConnected
+                    visible: root.botConnected || (root.authBusy && root.authAction === "logout")
+                    enabled: root.botConnected && !root.authBusy
                     Layout.preferredHeight: 40
-                    Layout.preferredWidth: 110
+                    Layout.preferredWidth: 120
                     onClicked: bot.logoutAccount()
+                }
+            }
+
+            // ===== Banner Loading & Keterangan Login / Logout =====
+            Rectangle {
+                Layout.fillWidth: true
+                visible: root.authBusy || root.authMessage.length > 0
+                radius: 8
+                implicitHeight: authBannerRow.implicitHeight + 14
+                color: root.authBusy
+                       ? Theme.bannerWarnBg
+                       : (root.botConnected ? Theme.bannerOkBg : Theme.surfaceAlt)
+                border.color: root.authBusy
+                              ? Theme.badgeWarnBorder
+                              : (root.botConnected ? Theme.up : Theme.border)
+                border.width: 1
+
+                RowLayout {
+                    id: authBannerRow
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 8
+
+                    BusyIndicator {
+                        running: root.authBusy
+                        visible: root.authBusy
+                        Layout.preferredWidth: 20
+                        Layout.preferredHeight: 20
+                    }
+
+                    Image {
+                        visible: !root.authBusy
+                        source: root.botConnected ? "qrc:/assets/check.svg" : "qrc:/assets/activity.svg"
+                        sourceSize: Qt.size(16, 16)
+                        Layout.preferredWidth: 16
+                        Layout.preferredHeight: 16
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: 11
+                        font.bold: root.authBusy
+                        color: root.authBusy ? Theme.badgeWarnText : (root.botConnected ? Theme.up : Theme.textSecondary)
+                        text: root.authMessage
+                    }
                 }
             }
         }

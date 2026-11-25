@@ -20,8 +20,10 @@ ApplicationWindow {
     Material.accent: Theme.accent
 
     readonly property bool botConnected: bot ? bot.connected : false
+    readonly property bool authBusy: bot ? bot.authBusy : false
+    readonly property string authAction: bot ? bot.authAction : ""
     readonly property string botStatus: bot ? bot.status : "Terputus"
-    readonly property color statusColor: botConnected ? Theme.up : Theme.down
+    readonly property color statusColor: authBusy ? Theme.warn : (botConnected ? Theme.up : Theme.down)
 
     // Log terkumpul dari sinyal controller.
     ListModel { id: logModel }
@@ -84,15 +86,18 @@ ApplicationWindow {
                 Item { Layout.fillWidth: true }
 
                 Button {
-                    visible: window.botConnected
+                    visible: window.botConnected || (window.authBusy && window.authAction === "logout")
+                    enabled: !(window.authBusy)
                     flat: true
                     icon.source: "qrc:/assets/link-off.svg"; icon.width: 14; icon.height: 14
-                    text: "Logout"
+                    text: (window.authBusy && window.authAction === "logout") ? "Logout..." : "Logout"
                     onClicked: if (bot) bot.logoutAccount()
                     ToolTip.visible: hovered
-                    ToolTip.text: "Putus koneksi & logout dari akun MT5"
+                    ToolTip.text: (window.authBusy && window.authAction === "logout")
+                                  ? "Sedang memutus koneksi dan menutup sesi..."
+                                  : "Putus koneksi & logout dari akun MT5"
                 }
-                Rectangle { visible: window.botConnected; width: 1; height: 18; color: Theme.divider }
+                Rectangle { visible: window.botConnected || (window.authBusy && window.authAction === "logout"); width: 1; height: 18; color: Theme.divider }
 
                 // Tombol Toggle Mode Gelap / Terang
                 Button {
@@ -165,8 +170,18 @@ ApplicationWindow {
                 }
                 Rectangle { width: 1; height: 18; color: Theme.divider }
 
-                Rectangle { width: 11; height: 11; radius: 6; color: window.statusColor }
-                Text { text: window.botStatus; color: Theme.textSecondary; font.pixelSize: 13 }
+                BusyIndicator {
+                    running: window.authBusy
+                    visible: window.authBusy
+                    Layout.preferredWidth: 18
+                    Layout.preferredHeight: 18
+                }
+                Rectangle { visible: !window.authBusy; width: 11; height: 11; radius: 6; color: window.statusColor }
+                Text {
+                    text: window.authBusy && bot && bot.authMessage ? bot.authMessage : window.botStatus
+                    color: window.authBusy ? Theme.warn : Theme.textSecondary
+                    font.pixelSize: 13
+                }
             }
         }
         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.divider }

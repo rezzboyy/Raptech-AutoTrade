@@ -6,6 +6,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QPointer>
 #include <QProcessEnvironment>
 #include <QStandardPaths>
 
@@ -256,24 +257,35 @@ bool PyBridgeWorker::startBridge()
 
 void PyBridgeWorker::stopBridge()
 {
-    if (!m_process)
+    if (!m_process || m_stopping)
         return;
+    m_stopping = true;
 
-    if (m_process->state() != QProcess::NotRunning) {
-        // Kirim perintah exit yang santun via stdin
-        sendCommand(QStringLiteral("exit"));
-        if (!m_process->waitForFinished(1500)) {
-            m_process->terminate();
-            if (!m_process->waitForFinished(1000)) {
-                m_process->kill();
+    QProcess *proc = m_process;
+    m_process = nullptr;
+    // Putus semua sinyal QProcess lebih dulu agar waitForFinished() tidak memicu
+    // onReadyReadStdout / onProcessFinished secara re-entrant (penyebab crash logout).
+    proc->disconnect(this);
+
+    if (proc->state() != QProcess::NotRunning) {
+        QJsonObject exitObj;
+        exitObj[QStringLiteral("id")] = static_cast<qint64>(m_nextId++);
+        exitObj[QStringLiteral("method")] = QStringLiteral("exit");
+        const QByteArray exitBytes = QJsonDocument(exitObj).toJson(QJsonDocument::Compact) + '\n';
+        proc->write(exitBytes);
+        proc->waitForBytesWritten(20);
+        if (!proc->waitForFinished(1200)) {
+            proc->terminate();
+            if (!proc->waitForFinished(800)) {
+                proc->kill();
             }
         }
     }
 
-    m_process->deleteLater();
-    m_process = nullptr;
+    proc->deleteLater();
     m_connected = false;
     m_trading = false;
+    m_stopping = false;
 }
 
 void PyBridgeWorker::sendCommand(const QString &method, const QVariantMap &params)
@@ -404,12 +416,13 @@ void PyBridgeWorker::wakeWorker()
 
 void PyBridgeWorker::onReadyReadStdout()
 {
-    if (!m_process)
+    if (!m_process || m_stopping)
         return;
 
+    QPointer<PyBridgeWorker> self(this);
     m_readBuffer.append(m_process->readAllStandardOutput());
 
-    while (true) {
+    while (self && m_process && !m_stopping) {
         int idx = m_readBuffer.indexOf('\n');
         if (idx < 0)
             break;
@@ -468,6 +481,12 @@ void PyBridgeWorker::onProcessFinished(int exitCode, QProcess::ExitStatus exitSt
 {
     Q_UNUSED(exitCode);
     Q_UNUSED(exitStatus);
+    if (m_stopping)
+        return;
+    if (m_process) {
+        m_process->deleteLater();
+        m_process = nullptr;
+    }
     m_connected = false;
     m_trading = false;
     emit connectedChanged(false);

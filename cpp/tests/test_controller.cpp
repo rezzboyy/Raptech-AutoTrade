@@ -284,6 +284,48 @@ private slots:
         QVERIFY(warnRes["unknownSettings"].toStringList().contains(QStringLiteral("typo_key")));
         QVERIFY(warnRes["unknownCtxMembers"].toStringList().contains(QStringLiteral("non_existent_api")));
     }
+
+    void simConnectAndLogout_noCrashAndAuthLoading()
+    {
+        BotController ctrl;
+        const QString origBackend = ctrl.backend();
+
+        QVariantMap cfg;
+        cfg[QStringLiteral("symbol")] = QStringLiteral("XAUUSDm");
+        cfg[QStringLiteral("balance")] = 10000.0;
+        cfg[QStringLiteral("scenario")] = QStringLiteral("volatile");
+        cfg[QStringLiteral("spread_points")] = 25;
+
+        QSignalSpy spyAuth(&ctrl, &BotController::authStateChanged);
+        QVERIFY(ctrl.connectSim(cfg));
+        QCOMPARE(ctrl.authBusy(), true);
+        QCOMPARE(ctrl.authAction(), QStringLiteral("login"));
+        QVERIFY(!ctrl.authMessage().isEmpty());
+        QVERIFY(spyAuth.count() >= 1);
+
+        // Tunggu sesi simulasi terhubung (maks 8 detik)
+        QTRY_COMPARE_WITH_TIMEOUT(ctrl.connected(), true, 8000);
+        QCOMPARE(ctrl.authBusy(), false);
+        QVERIFY(!ctrl.authMessage().isEmpty());
+
+        // Uji logout -> HARUS kembali terputus dengan bersih tanpa crash/force close
+        ctrl.logoutAccount();
+        QCOMPARE(ctrl.authBusy(), true);
+        QCOMPARE(ctrl.authAction(), QStringLiteral("logout"));
+
+        QTRY_COMPARE_WITH_TIMEOUT(ctrl.connected(), false, 5000);
+        QTRY_COMPARE_WITH_TIMEOUT(ctrl.authBusy(), false, 5000);
+        QCOMPARE(ctrl.status(), QStringLiteral("Terputus"));
+        QVERIFY(ctrl.authMessage().contains(QStringLiteral("Logout"), Qt::CaseInsensitive));
+
+        // Pastikan bisa login lagi setelah logout
+        QVERIFY(ctrl.connectSim(cfg));
+        QTRY_COMPARE_WITH_TIMEOUT(ctrl.connected(), true, 8000);
+        ctrl.logoutAccount();
+        QTRY_COMPARE_WITH_TIMEOUT(ctrl.connected(), false, 5000);
+
+        ctrl.setBackend(origBackend);
+    }
 };
 
 QTEST_MAIN(TestController)

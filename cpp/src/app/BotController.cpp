@@ -12,12 +12,14 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QPointer>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSet>
 #include <QStandardPaths>
 #include <QTextStream>
 #include <QThread>
+#include <QTimer>
 #include <QUrl>
 
 #ifdef Q_OS_WIN
@@ -199,6 +201,39 @@ void BotController::setTradingState(bool v)
     }
 }
 
+void BotController::setAuthState(bool busy, const QString &action, const QString &message)
+{
+    if (m_authBusy == busy && m_authAction == action && m_authMessage == message)
+        return;
+    m_authBusy = busy;
+    m_authAction = action;
+    m_authMessage = message;
+    emit authStateChanged();
+}
+
+void BotController::resetSessionTelemetry()
+{
+    m_balance = 0.0;
+    m_equity = 0.0;
+    m_margin = 0.0;
+    m_freeMargin = 0.0;
+    m_profit = 0.0;
+    m_accountLogin = 0;
+    m_currency.clear();
+    m_accountType = QStringLiteral("?");
+    m_accountServer.clear();
+    m_serverConnected = false;
+    m_tradeAllowed = false;
+    if (m_tradeBlocked || !m_tradeRejectReason.isEmpty()) {
+        m_tradeBlocked = false;
+        m_tradeRejectReason.clear();
+        emit tradeBlockedChanged();
+    }
+    emit accountChanged();
+    emit positionsChanged({});
+    emit ordersChanged({});
+}
+
 void BotController::setBackend(const QString &nameIn)
 {
     QString name = nameIn.toLower();
@@ -245,8 +280,20 @@ void BotController::ensureBridgeWorker()
 
 void BotController::connectBot()
 {
-    if (m_connected)
+    if (m_connected || (m_authBusy && m_authAction == QStringLiteral("login")))
         return;
+
+    const QString bLower = settings().backend.toLower();
+    QString loginDesc = QStringLiteral("Menghubungkan ke MCP Server MetaTrader 5...");
+    if (bLower == QStringLiteral("native")) {
+        loginDesc = QStringLiteral("Meluncurkan terminal MT5 & memverifikasi akun...");
+    } else if (bLower == QStringLiteral("sim")) {
+        loginDesc = QStringLiteral("Menyiapkan lingkungan Simulasi Paper-Trading...");
+    }
+    const int serial = ++m_authSerial;
+    setAuthState(true, QStringLiteral("login"), loginDesc);
+    setStatus(QStringLiteral("Menghubungkan..."));
+    emit logMessage(QStringLiteral("[SISTEM] %1").arg(loginDesc));
 
     // Backend Native: hubungkan ke terminal MT5 lokal via kredensial akun
     if (settings().backend == "native") {
@@ -264,7 +311,6 @@ void BotController::connectBot()
             QProcess::startDetached(termPath, args);
         }
     }
-    setStatus(QStringLiteral("Menghubungkan..."));
 
     ensureBridgeWorker();
 
@@ -283,24 +329,58 @@ void BotController::connectBot()
     p[QStringLiteral("sim_spread_points")] = settings().simSpreadPoints;
 
     m_pyWorker->connectBackend(p);
+
+    // Timeout pengaman agar indikator loading login tidak berputar selamanya bila terminal gagal merespons
+    QPointer<BotController> self(this);
+    QTimer::singleShot(25000, this, [self, serial]() {
+        if (!self || self->m_authSerial != serial)
+            return;
+        if (self->m_authBusy && self->m_authAction == QStringLiteral("login") && !self->m_connected) {
+            self->setAuthState(false, QString(),
+                               QStringLiteral("Waktu koneksi habis — periksa terminal MT5 atau pengaturan koneksi."));
+            self->setStatus(QStringLiteral("Gagal terhubung"));
+            emit self->logMessage(QStringLiteral("[ERROR] Timeout saat menghubungkan sesi login."));
+        }
+    });
 }
 
 void BotController::disconnectBot()
 {
-    setStatus(QStringLiteral("Memutus..."));
+    setStatus(QStringLiteral("Sedang logout..."));
     setTradingState(false);
-    if (m_pyWorker) {
+    if (m_pyWorker && m_pyWorker->isRunning()) {
         m_pyWorker->setTrading(false);
         m_pyWorker->requestStop();
+    } else {
+        onWorkerStopped();
     }
 }
 
 void BotController::logoutAccount()
 {
+    if (m_authBusy && m_authAction == QStringLiteral("logout"))
+        return;
+
+    const int serial = ++m_authSerial;
+    setAuthState(true, QStringLiteral("logout"), QStringLiteral("Sedang logout & memutus koneksi sesi..."));
+    emit logMessage(QStringLiteral("[SISTEM] Sedang logout dan menutup koneksi akun..."));
+
     disconnectBot();
-    emit positionsChanged({});
-    emit ordersChanged({});
-    emit logMessage(QStringLiteral("[SISTEM] Akun logout / koneksi ditutup."));
+
+    // Pengaman: pastikan status & loading logout selalu selesai meski worker tidak mengirim event balik
+    QPointer<BotController> self(this);
+    QTimer::singleShot(2500, this, [self, serial]() {
+        if (!self || self->m_authSerial != serial)
+            return;
+        if (self->m_authBusy && self->m_authAction == QStringLiteral("logout")) {
+            self->setConnectedState(false);
+            self->setTradingState(false);
+            self->resetSessionTelemetry();
+            self->setStatus(QStringLiteral("Terputus"));
+            self->setAuthState(false, QString(), QStringLiteral("Logout berhasil — sesi akun ditutup dengan aman."));
+            emit self->logMessage(QStringLiteral("[SISTEM] Logout berhasil — sesi akun ditutup dengan aman."));
+        }
+    });
 }
 
 void BotController::setTrading(bool enabled)
@@ -1587,21 +1667,29 @@ void BotController::onWorkerConnected(bool connected)
 {
     setConnectedState(connected);
     if (connected) {
+        ++m_authSerial;
         setStatus(QStringLiteral("Terhubung"));
         if (settings().backend.compare("native", Qt::CaseInsensitive) == 0) {
             emit logMessage(QStringLiteral("[MT5] Berhasil terhubung ke terminal MetaTrader 5."));
+            setAuthState(false, QString(), QStringLiteral("Login berhasil — terhubung ke terminal MetaTrader 5."));
         } else if (settings().backend.compare("sim", Qt::CaseInsensitive) == 0) {
             emit logMessage(QStringLiteral("[SIMULASI] Terhubung ke mode Simulasi Paper-Trading (saldo virtual $%1, skenario '%2').")
                                 .arg(settings().simBalance, 0, 'f', 2)
                                 .arg(settings().simScenario));
+            setAuthState(false, QString(), QStringLiteral("Mode Simulasi aktif — siap menguji skrip & order."));
         } else {
             emit logMessage(QStringLiteral("[MT5] Berhasil terhubung ke MCP MetaTrader 5."));
+            setAuthState(false, QString(), QStringLiteral("Login berhasil — terhubung ke MCP MetaTrader 5."));
         }
         // Auto-save rahasia MCP agar API key termuat otomatis saat startup berikutnya.
         if (!settings().mcpApiKey.isEmpty()) {
             if (ConfigStore::saveMcpSecret(settings()))
                 emit logMessage(QStringLiteral("[MT5] Kunci sesi MT5 tersimpan untuk sesi berikutnya."));
         }
+    } else if (m_authAction == QStringLiteral("login")) {
+        ++m_authSerial;
+        setStatus(QStringLiteral("Terputus"));
+        setAuthState(false, QString(), QStringLiteral("Gagal terhubung ke MT5 — periksa kredensial atau terminal."));
     }
 }
 void BotController::onWorkerChartSymbol(const QString &symbol)
@@ -1638,14 +1726,27 @@ void BotController::onSimulationResult(const QVariantMap &result)
 }
 void BotController::onWorkerStopped()
 {
-    if (m_pyWorker) {
-        m_pyWorker->stopBridge();
-        m_pyWorker->deleteLater();
-        m_pyWorker = nullptr;
-    }
+    // PENTING: JANGAN memanggil stopBridge() / deleteLater() di sini karena sinyal
+    // stopped() bisa dipancarkan dari dalam PyBridgeWorker::onReadyReadStdout()
+    // atau onProcessFinished() — menghancurkan m_pyWorker di tengah stack itu
+    // menyebabkan crash/force-close saat logout. Biarkan m_pyWorker tetap hidup
+    // sebagai bridge siap pakai sampai aplikasi ditutup (~BotController).
+    const QString prevAction = m_authAction;
+    ++m_authSerial;
+
     setConnectedState(false);
     setTradingState(false);
+    resetSessionTelemetry();
     setStatus(QStringLiteral("Terputus"));
+
+    if (prevAction == QStringLiteral("logout")) {
+        setAuthState(false, QString(), QStringLiteral("Logout berhasil — sesi akun ditutup dengan aman."));
+        emit logMessage(QStringLiteral("[SISTEM] Logout berhasil — sesi akun ditutup dengan aman."));
+    } else if (prevAction == QStringLiteral("login")) {
+        setAuthState(false, QString(), QStringLiteral("Koneksi gagal atau ditutup sebelum login selesai."));
+    } else {
+        setAuthState(false, QString(), QString());
+    }
 }
 
 static QVariantList toVariantPoints(const QVector<double> &series)

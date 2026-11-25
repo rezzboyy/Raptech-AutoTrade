@@ -38,6 +38,9 @@ class BotController : public QObject
     Q_PROPERTY(QVariantMap stats READ stats NOTIFY statsChanged)
     Q_PROPERTY(QVariantList equityCurve READ equityCurve NOTIFY equityChanged)
     Q_PROPERTY(QVariantList journal READ journal NOTIFY journalChanged)
+    Q_PROPERTY(bool authBusy READ authBusy NOTIFY authStateChanged)
+    Q_PROPERTY(QString authAction READ authAction NOTIFY authStateChanged)
+    Q_PROPERTY(QString authMessage READ authMessage NOTIFY authStateChanged)
 
 public:
     explicit BotController(QObject *parent = nullptr);
@@ -67,6 +70,9 @@ public:
     QVariantMap stats() const { return m_stats; }
     QVariantList equityCurve() const { return m_equityCurve; }
     QVariantList journal() const { return m_journal; }
+    bool authBusy() const { return m_authBusy; }
+    QString authAction() const { return m_authAction; }
+    QString authMessage() const { return m_authMessage; }
 
 public slots:
     void connectBot();
@@ -159,6 +165,7 @@ signals:
     void mcpProfilesChanged(const QVariantList &profiles);
     void themeChanged(const QString &themeName);
     void simulationFinished(const QVariantMap &result);
+    void authStateChanged();
 
 private slots:
     void onAccount(const QVariantMap &account);
@@ -181,6 +188,8 @@ private:
     void setStatus(const QString &s);
     void setConnectedState(bool v);
     void setTradingState(bool v);
+    void setAuthState(bool busy, const QString &action, const QString &message);
+    void resetSessionTelemetry();
 
     bool m_connected = false;
     bool m_trading = false;
@@ -197,6 +206,11 @@ private:
     QVariantMap m_stats;
     QVariantList m_equityCurve;
     QVariantList m_journal;
+
+    bool m_authBusy = false;
+    QString m_authAction;
+    QString m_authMessage;
+    int m_authSerial = 0;
 
     PyBridgeWorker *m_pyWorker = nullptr;
 };
