@@ -574,6 +574,7 @@ class SimBackend:
             "symbol": sym,
             "type": ot.upper(),
             "volume": round(float(volume), 2),
+            "price": float(price),
             "price_open": float(price),
             "sl": float(sl or 0.0),
             "tp": float(tp or 0.0),

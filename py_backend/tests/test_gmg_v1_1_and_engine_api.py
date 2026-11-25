@@ -256,6 +256,69 @@ def test_gmg_ast_compile_and_settings(gmg_source):
     assert st["one_trade_per_bar"] is False
     assert st["close_on_reversal"] is False
     assert st["max_open_positions"] == 20
+    assert st["loop_interval"] == 1
+
+
+def test_engine_syncs_gmg_loop_interval_and_timeframe(tmp_path, monkeypatch):
+    gmg_text = _GMG_PATH.read_text(encoding="utf-8") if _GMG_PATH.exists() else ""
+    if not gmg_text:
+        pytest.skip("File GMG V1.1 tidak ditemukan di Sc Pribadi Trader")
+    monkeypatch.setattr(be_mod, "SCRIPT_STATE_FILE", str(tmp_path / "script_state.json"))
+    monkeypatch.setattr(settings, "strategy_name", "custom_script")
+    monkeypatch.setattr(settings, "script_source", gmg_text)
+    monkeypatch.setattr(settings, "loop_interval", 15)
+    monkeypatch.setattr(settings, "timeframe_str", "M5")
+    monkeypatch.setattr(settings, "max_open_positions", 1)
+
+    backend = _MockGridBackend(_make_df([2650.0] * 25))
+    BotEngine(backend=backend)
+    assert settings.loop_interval == 1
+    assert settings.timeframe_str == "M1"
+    assert settings.max_open_positions == 20
+    assert settings.magic_number == 20261123
+
+
+def test_engine_isolates_settings_and_state_across_different_scripts(tmp_path, monkeypatch):
+    monkeypatch.setattr(be_mod, "SCRIPT_STATE_FILE", str(tmp_path / "script_state.json"))
+    monkeypatch.setattr(settings, "strategy_name", "custom_script")
+    monkeypatch.setattr(settings, "loop_interval", 15)
+    monkeypatch.setattr(settings, "timeframe_str", "M5")
+    monkeypatch.setattr(settings, "max_open_positions", 2)
+    monkeypatch.setattr(settings, "magic_number", 100200)
+
+    script_a = """
+SETTINGS = {"loop_interval": 1, "timeframe": "M1", "max_positions": 20, "magic_number": 999111}
+def on_bar(ctx):
+    ctx.state["who"] = "A"
+    return None
+"""
+    script_b = """
+SETTINGS = {"volume": 0.02}
+def on_bar(ctx):
+    ctx.state["who"] = "B"
+    return None
+"""
+    backend = _MockGridBackend(_make_df([2650.0] * 25))
+    monkeypatch.setattr(settings, "script_source", script_a)
+    eng = BotEngine(backend=backend)
+    assert eng.strategy.state_key != "custom_script"
+    assert settings.loop_interval == 1
+    assert settings.timeframe_str == "M1"
+    assert settings.max_open_positions == 20
+    assert settings.magic_number == 999111
+    eng.process_trading_step()
+    assert eng._script_state.get("who") == "A"
+
+    # Ganti ke script B -> harus kembali memakai base settings (bukan sisa script A) & state terisolasi!
+    monkeypatch.setattr(settings, "script_source", script_b)
+    eng.rebuild_strategy()
+    assert settings.loop_interval == 15
+    assert settings.timeframe_str == "M5"
+    assert settings.max_open_positions == 2
+    assert settings.magic_number == 100200
+    assert eng._script_state == {}
+    eng.process_trading_step()
+    assert eng._script_state.get("who") == "B"
 
 
 def test_gmg_seed_buy_stop_and_trailing(gmg_source):

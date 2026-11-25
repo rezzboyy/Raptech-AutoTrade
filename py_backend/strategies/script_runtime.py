@@ -1181,7 +1181,13 @@ class ScriptStrategy(Strategy):
         self._on_bar = self._ns["on_bar"]
         # Konteks runtime yang diisi engine tiap bar (posisi, pending, akun, tick, dll).
         self._state = {}
-        self.state_key = str(self.script_settings.get("name") or self._ns.get("NAME") or "custom_script").strip() or "custom_script"
+        explicit_name = str(self.script_settings.get("name") or self._ns.get("NAME") or "").strip()
+        if explicit_name:
+            self.state_key = explicit_name
+        else:
+            import hashlib
+            digest = hashlib.sha1(self.source.encode("utf-8", errors="ignore")).hexdigest()[:10]
+            self.state_key = f"script_{digest}"
         self._runtime = {
             "symbol": "", "positions": [], "pending_orders": [],
             "account": {}, "tick": {}, "spec": {}, "rates_provider": None,

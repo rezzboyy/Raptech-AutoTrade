@@ -398,6 +398,8 @@ class BridgeService:
 
     def handle_connect(self, params: Dict[str, Any]) -> Dict[str, Any]:
         with self._lock:
+            if isinstance(params.get("config"), dict):
+                config_store.apply(params["config"])
             # Terapkan parameter koneksi jika dikirim
             if "backend" in params:
                 settings.backend = str(params["backend"]).lower()
@@ -415,6 +417,10 @@ class BridgeService:
                 settings.mcp_api_key = str(params["mcp_api_key"])
             if "symbol" in params and params["symbol"]:
                 settings.symbol = str(params["symbol"])
+            if "script_source" in params:
+                settings.script_source = str(params["script_source"])
+            if "script_name" in params:
+                settings.script_name = str(params["script_name"])
             if "sim_balance" in params:
                 settings.sim_balance = max(100.0, float(params["sim_balance"]))
             if "sim_scenario" in params and params["sim_scenario"]:
@@ -451,7 +457,12 @@ class BridgeService:
         enabled = bool(params.get("enabled", False))
         if self.worker and self.worker.running:
             if enabled:
+                prev_tf = settings.timeframe_str
                 self.engine.rebuild_strategy()
+                if settings.timeframe_str != prev_tf:
+                    self.worker.chart_dirty = True
+                    self.emitter.send_event("timeframeChanged", {"timeframe": settings.timeframe_str})
+                self.worker.wake()
             self.worker.set_trading(enabled)
             self.emitter.send_event("tradingChanged", {"trading": enabled})
             return {"ok": True, "trading": enabled}
@@ -565,6 +576,7 @@ class BridgeService:
             return {"ok": False, "errors": errs}
         config_store.save()
         if self.engine:
+            self.engine.refresh_base_settings()
             self.engine.rebuild_strategy()
         return {"ok": True}
 

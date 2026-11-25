@@ -52,9 +52,23 @@ def make_backend():
 class BotEngine:
     """Membungkus operasi tingkat tinggi untuk dipakai worker thread."""
 
+    _SCRIPT_OVERRIDE_FIELDS = (
+        "loop_interval",
+        "timeframe_str",
+        "max_open_positions",
+        "magic_number",
+        "max_spread_points",
+        "daily_drawdown_limit",
+        "max_daily_trades",
+        "trailing_stop_enabled",
+        "break_even_enabled",
+    )
+
     def __init__(self, backend=None, persist_state: bool = True):
         self._persist_state = bool(persist_state)
         self.backend = backend if backend is not None else make_backend()
+        self._base_settings = {}
+        self.refresh_base_settings()
         self.strategy = self._build_strategy()
         # Level SL/TP virtual per ticket: {ticket: {symbol,type,sl,tp}}.
         self._virtual = {}
@@ -65,6 +79,12 @@ class BotEngine:
         self._last_trade_step = {}
         self._trade_steps = 0
         self._script_state = self._load_script_state() if self._persist_state else {}
+
+    def refresh_base_settings(self) -> None:
+        """Simpan snapshot konfigurasi dasar user sebelum ditimpa SETTINGS per-skrip."""
+        self._base_settings = {
+            k: getattr(settings, k) for k in self._SCRIPT_OVERRIDE_FIELDS
+        }
 
     def _state_key(self) -> str:
         return str(getattr(self.strategy, "state_key", "") or settings.script_name or settings.strategy_name or "custom_script")
@@ -111,12 +131,59 @@ class BotEngine:
         except Exception:  # noqa: BLE001
             pass
 
+    def _sync_script_settings(self, strat) -> None:
+        """Selaraskan SETTINGS dari skrip aktif tanpa membocorkan SETTINGS skrip sebelumnya."""
+        for k, base_val in (getattr(self, "_base_settings", None) or {}).items():
+            setattr(settings, k, base_val)
+
+        cfg = getattr(strat, "script_settings", None)
+        if not isinstance(cfg, dict) or not cfg:
+            return
+        if "loop_interval" in cfg:
+            try:
+                settings.loop_interval = max(1, int(cfg["loop_interval"]))
+            except (TypeError, ValueError):
+                pass
+        if "timeframe_str" in cfg and str(cfg["timeframe_str"]).strip():
+            settings.timeframe_str = str(cfg["timeframe_str"]).strip().upper()
+        if "max_open_positions" in cfg:
+            try:
+                settings.max_open_positions = max(1, int(cfg["max_open_positions"]))
+            except (TypeError, ValueError):
+                pass
+        if "magic_number" in cfg:
+            try:
+                settings.magic_number = int(cfg["magic_number"])
+            except (TypeError, ValueError):
+                pass
+        if "max_spread_points" in cfg:
+            try:
+                settings.max_spread_points = max(0, int(cfg["max_spread_points"]))
+            except (TypeError, ValueError):
+                pass
+        if "daily_drawdown_limit" in cfg:
+            try:
+                settings.daily_drawdown_limit = max(0.0, float(cfg["daily_drawdown_limit"]))
+            except (TypeError, ValueError):
+                pass
+        if "max_daily_trades" in cfg:
+            try:
+                settings.max_daily_trades = max(0, int(cfg["max_daily_trades"]))
+            except (TypeError, ValueError):
+                pass
+        if "trailing_stop_enabled" in cfg:
+            settings.trailing_stop_enabled = bool(cfg["trailing_stop_enabled"])
+        if "break_even_enabled" in cfg:
+            settings.break_even_enabled = bool(cfg["break_even_enabled"])
+
     def _build_strategy(self):
         try:
             if settings.strategy_name == "custom_script":
                 from strategies.script_runtime import ScriptStrategy, DEFAULT_TEMPLATE
                 src = settings.script_source if (settings.script_source and settings.script_source.strip()) else DEFAULT_TEMPLATE
-                return ScriptStrategy(src, settings.strategy_params)
+                strat = ScriptStrategy(src, settings.strategy_params)
+                self._sync_script_settings(strat)
+                return strat
             return strategy_loader.create(settings.strategy_name, settings.strategy_params)
         except Exception as exc:  # noqa: BLE001
             logger.error("Gagal membuat strategi '%s' (%s), menggunakan skrip aman.", settings.strategy_name, exc)
@@ -125,8 +192,13 @@ class BotEngine:
 
     def rebuild_strategy(self) -> None:
         self.strategy = self._build_strategy()
-        self._script_state = self._load_script_state()
-        logger.info("Strategi diperbarui: %s %s", self.strategy.display_name, self.strategy.params)
+        self._last_trade_bar = {}
+        self._last_trade_step = {}
+        self._trade_steps = 0
+        self._script_state = self._load_script_state() if self._persist_state else {}
+        logger.info("Strategi diperbarui: %s (key=%s, loop=%ds, tf=%s, max_pos=%d)",
+                    self.strategy.display_name, getattr(self.strategy, "state_key", "?"),
+                    settings.loop_interval, settings.timeframe_str, settings.max_open_positions)
 
     def rebuild_backend(self) -> None:
         """Bangun ulang backend sesuai settings.backend terkini (dipanggil sebelum connect)."""
@@ -992,7 +1064,7 @@ class BotEngine:
                 ticket = cmd.get("ticket")
                 if ticket:
                     res = self.backend.delete_pending_order(int(ticket))
-                    ok = bool(res.get("ok"))
+                    ok = bool(res.get("ok")) if isinstance(res, dict) else bool(res)
                     self._journal("DELETE_ORDER", symbol, f"hapus pending #{ticket}", ok)
             elif action == "MODIFY_ORDER":
                 ticket = cmd.get("ticket")

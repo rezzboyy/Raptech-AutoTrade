@@ -327,6 +327,7 @@ void BotController::connectBot()
     p[QStringLiteral("sim_balance")] = settings().simBalance;
     p[QStringLiteral("sim_scenario")] = settings().simScenario;
     p[QStringLiteral("sim_spread_points")] = settings().simSpreadPoints;
+    p[QStringLiteral("config")] = ConfigStore::toJson(settings()).toVariantMap();
 
     m_pyWorker->connectBackend(p);
 
@@ -392,6 +393,9 @@ void BotController::setTrading(bool enabled)
     setTradingState(enabled);
     if (m_pyWorker) {
         if (enabled) {
+            QVariantMap cfgPayload;
+            cfgPayload[QStringLiteral("config")] = ConfigStore::toJson(settings()).toVariantMap();
+            m_pyWorker->sendCommand(QStringLiteral("apply_config"), cfgPayload);
             m_pyWorker->reloadStrategy();
         }
         m_pyWorker->setTrading(enabled);
@@ -1197,8 +1201,12 @@ void BotController::setScript(const QString &source)
     settings().scriptSource = source;
     settings().strategyName = QStringLiteral("custom_script");
     ConfigStore::save(settings());
-    if (m_pyWorker)
+    if (m_pyWorker && m_pyWorker->isRunning()) {
+        QVariantMap cfgPayload;
+        cfgPayload[QStringLiteral("config")] = ConfigStore::toJson(settings()).toVariantMap();
+        m_pyWorker->sendCommand(QStringLiteral("apply_config"), cfgPayload);
         m_pyWorker->reloadStrategy();
+    }
     emit logMessage(QStringLiteral("[SKRIP] Skrip strategi disimpan & diperbarui di runtime engine."));
 }
 

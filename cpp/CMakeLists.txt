@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(XaviqTradingEngine VERSION 3.2.9 LANGUAGES CXX)
+project(XaviqTradingEngine VERSION 3.2.10 LANGUAGES CXX)
 
 # Resource Windows (ikon EXE). MinGW mengompilasi .rc via windres.
 if(WIN32)
