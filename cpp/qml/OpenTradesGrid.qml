@@ -27,11 +27,11 @@ Rectangle {
         anchors.fill: parent
         spacing: 0
 
-        // ================= Header Tabel (Slate Navy) =================
+        // ================= Header Tabel =================
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 32
-            color: "#101622"
+            color: Theme.tableHeader
             border.color: Theme.border
             border.width: 1
 
@@ -96,7 +96,7 @@ Rectangle {
                 delegate: Rectangle {
                     width: openPosView.width
                     height: 32
-                    color: index % 2 === 0 ? "#0B0E14" : "#0E121A"
+                    color: index % 2 === 0 ? Theme.rowEven : Theme.rowOdd
 
                     readonly property double pnl: model.profit !== undefined ? Number(model.profit) : 0.0
                     readonly property string sideStr: String(model.type || "").toUpperCase()
@@ -129,7 +129,8 @@ Rectangle {
                             Layout.preferredWidth: 50
                             Layout.preferredHeight: 18
                             radius: 3
-                            color: isBuy ? Qt.rgba(0.0, 0.9, 0.46, 0.15) : Qt.rgba(1.0, 0.32, 0.32, 0.15)
+                            color: isBuy ? Qt.rgba(Theme.up.r, Theme.up.g, Theme.up.b, Theme.isDark ? 0.15 : 0.12)
+                                         : Qt.rgba(Theme.down.r, Theme.down.g, Theme.down.b, Theme.isDark ? 0.15 : 0.12)
                             border.color: isBuy ? Theme.up : Theme.down
 
                             Text {
@@ -196,7 +197,7 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 32
-            color: "#0E121A"
+            color: Theme.surface
             border.color: Theme.border
             border.width: 1
 

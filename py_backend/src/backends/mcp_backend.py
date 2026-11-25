@@ -516,6 +516,8 @@ class McpBackend:
                 "tick_value": float(s.get("tick_value", 0.0) or 0.0),
                 "tick_size": float(s.get("tick_size", 0.0) or 0.0),
                 "stop_level": int(s.get("trade_stops_level", 0) or 0),
+                "freeze_level": int(s.get("trade_freeze_level", 0) or 0),
+                "contract_size": float(s.get("trade_contract_size", 0.0) or 0.0),
             }
         if cache:
             self._symbol_cache = cache
@@ -667,6 +669,34 @@ class McpBackend:
             result["message"] = _friendly_trade_error(result.get("message", ""))
             logger.error("Pending order %s %s gagal: %s", ot, symbol, result["message"])
         return result
+
+    def modify_pending_order(self, ticket: int, price: float,
+                             sl: Optional[float] = None, tp: Optional[float] = None) -> dict:
+        """Ubah harga pending order via MCP (aman dengan cancel + replace bila didukung)."""
+        blocked = self._trading_blocked_reason()
+        if blocked:
+            return {"ok": False, "ticket": ticket, "message": blocked}
+        target = None
+        for o in self.pending_orders():
+            if int(o.get("ticket", 0)) == int(ticket):
+                target = o
+                break
+        if target is None:
+            return {"ok": False, "ticket": ticket, "message": "Pending order tidak ditemukan."}
+        del_res = self.delete_pending_order(int(ticket))
+        if not del_res.get("ok"):
+            return {"ok": False, "ticket": ticket, "message": del_res.get("message", "Gagal menghapus pending order lama.")}
+        new_sl = float(sl) if sl is not None else float(target.get("sl", 0.0) or 0.0)
+        new_tp = float(tp) if tp is not None else float(target.get("tp", 0.0) or 0.0)
+        return self.send_pending_order(
+            target["symbol"],
+            target["type"],
+            float(target["volume"]),
+            float(price),
+            sl=new_sl,
+            tp=new_tp,
+            magic=int(target.get("magic", 0) or 0),
+        )
 
     def delete_pending_order(self, ticket: int) -> dict:
         """Hapus satu pending order via MCP."""

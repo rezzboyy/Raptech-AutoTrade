@@ -319,20 +319,20 @@ def test_ctx_exposes_tahap1_indicators():
 
 def test_script_strategy_ema_cross_buy():
     """Harga naik tajam setelah turun -> EMA cepat memotong ke atas -> BUY."""
-    src = sr.load_script("ema_cross") or sr.DEFAULT_TEMPLATE
+    src = sr.DEFAULT_TEMPLATE
     strat = ScriptStrategy(src, {"fast": 3, "slow": 6})
     # Deret turun lalu naik tajam untuk memicu crossover ke atas di bar terakhir.
     closes = [20, 19, 18, 17, 16, 15, 14, 13, 12, 30]
     sig = strat.generate_signal(_make_df(closes))
-    assert sig == "BUY"
+    assert sig is not None and sig.get("action") == "BUY"
 
 
 def test_script_strategy_ema_cross_sell():
-    src = sr.load_script("ema_cross") or sr.DEFAULT_TEMPLATE
+    src = sr.DEFAULT_TEMPLATE
     strat = ScriptStrategy(src, {"fast": 3, "slow": 6})
     closes = [10, 11, 12, 13, 14, 15, 16, 17, 18, 2]
     sig = strat.generate_signal(_make_df(closes))
-    assert sig == "SELL"
+    assert sig is not None and sig.get("action") == "SELL"
 
 
 def test_script_strategy_no_signal_returns_none():
@@ -364,7 +364,9 @@ def test_script_strategy_params_resolved():
 # ----- Simpan / muat / daftar skrip -----
 
 def test_save_load_list_script(tmp_path, monkeypatch):
+    monkeypatch.setenv("XAVIQ_SCRIPTS_DIR", str(tmp_path))
     monkeypatch.setattr(sr, "SCRIPTS_DIR", str(tmp_path))
+    monkeypatch.setattr(sr, "_get_scripts_dir", lambda: str(tmp_path))
     src = sr.DEFAULT_TEMPLATE
     path = sr.save_script("uji coba!", src)
     assert path and os.path.exists(path)
@@ -376,7 +378,9 @@ def test_save_load_list_script(tmp_path, monkeypatch):
 
 
 def test_load_missing_script_returns_empty(tmp_path, monkeypatch):
+    monkeypatch.setenv("XAVIQ_SCRIPTS_DIR", str(tmp_path))
     monkeypatch.setattr(sr, "SCRIPTS_DIR", str(tmp_path))
+    monkeypatch.setattr(sr, "_get_scripts_dir", lambda: str(tmp_path))
     assert sr.load_script("tidak_ada") == ""
 
 
@@ -390,21 +394,6 @@ def test_infinite_loop_is_stopped(monkeypatch):
     assert strat.generate_signal(_make_df([1, 2, 3])) is None
 
 
-# ----- Skrip contoh -----
-
-@pytest.mark.parametrize("name", [
-    "ema_cross", "rsi_reversal", "bollinger_breakout", "multi_confirm",
-    "cbot_style", "managed_exit", "stoch_adx", "supertrend_ichimoku",
-])
-def test_bundled_sample_scripts_compile_and_run(name):
-    src = sr.load_script(name)
-    assert src, f"skrip contoh '{name}' tidak ditemukan"
-    strat = ScriptStrategy(src)
-    closes = [100 + (i % 7) - 3 for i in range(150)]
-    sig = strat.generate_signal(_make_df(closes))
-    assert sig in (None, "BUY", "SELL")
-
-
 # ----- Integrasi engine: skrip aktif dipakai engine (kolom script berfungsi) -----
 
 def test_engine_builds_script_strategy_from_settings(monkeypatch):
@@ -414,14 +403,15 @@ def test_engine_builds_script_strategy_from_settings(monkeypatch):
 
     monkeypatch.setattr(settings, "backend", "native")
     monkeypatch.setattr(settings, "strategy_name", "custom_script")
-    monkeypatch.setattr(settings, "script_source", sr.load_script("ema_cross") or sr.DEFAULT_TEMPLATE)
+    monkeypatch.setattr(settings, "script_source", sr.DEFAULT_TEMPLATE)
     monkeypatch.setattr(settings, "strategy_params", {"fast": 3, "slow": 6})
 
     engine = BotEngine()
     assert isinstance(engine.strategy, ScriptStrategy)
     # Deret turun lalu melonjak -> crossover ke atas -> BUY.
     closes = [20, 19, 18, 17, 16, 15, 14, 13, 12, 30]
-    assert engine.strategy.generate_signal(_make_df(closes)) == "BUY"
+    sig = engine.strategy.generate_signal(_make_df(closes))
+    assert sig is not None and sig.get("action") == "BUY"
 
 
 def test_engine_invalid_script_falls_back(monkeypatch):

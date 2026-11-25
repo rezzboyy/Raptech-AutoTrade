@@ -186,10 +186,12 @@ def test_journal_capacity_limit(controller):
     assert "Aksi nomor 2049" in controller.journal[-1]["detail"]
 
 
-def test_end_to_end_programmer_flow_simulation(controller, tmp_path):
+def test_end_to_end_programmer_flow_simulation(controller, tmp_path, monkeypatch):
     """Simulasi alur pengguna lengkap di tab Mode Programmer:
     Buka Programmer -> Sisip Snippet API -> Validasi -> Eksekusi Simulasi -> Jurnal terisi -> Ekspor CSV.
     """
+    from src import config_store
+    monkeypatch.setattr(config_store, "CONFIG_FILE", str(tmp_path / "config.json"))
     # 1. Ambil snippet API dari bantuan
     refs = controller.apiReference()
     order_cat = next(c for c in refs if c["group"] == "Perintah Order")

@@ -60,6 +60,7 @@ QJsonObject toJson(const Settings &s)
     o["script_name"] = s.scriptName;
     o["script_source"] = s.scriptSource;
     o["loop_interval"] = s.loopInterval;
+    o["theme"] = s.theme;
     o["backend"] = s.backend;
     o["mcp_endpoint"] = s.mcpEndpoint;
     // CATATAN: mcp_api_key & kredensial sengaja TIDAK disertakan.
@@ -115,9 +116,13 @@ QStringList validate(const QJsonObject &o, const Settings &c)
     if (intOr(o, "max_consecutive_losses", c.maxConsecutiveLosses) < 0)
         errors << QStringLiteral("Max consecutive losses harus >= 0.");
 
+    const QString theme = strOr(o, "theme", c.theme).toLower();
+    if (theme != "dark" && theme != "light")
+        errors << QStringLiteral("Theme harus 'dark' atau 'light'.");
+
     const QString backend = strOr(o, "backend", c.backend).toLower();
-    if (backend != "native" && backend != "mcp")
-        errors << QStringLiteral("Backend harus 'native' atau 'mcp'.");
+    if (backend != "native" && backend != "mcp" && backend != "sim")
+        errors << QStringLiteral("Backend harus 'native', 'mcp', atau 'sim'.");
 
     return errors;
 }
@@ -156,6 +161,7 @@ QStringList apply(const QJsonObject &o, Settings &s)
     if (o.contains("script_name")) s.scriptName = o["script_name"].toString();
     if (o.contains("script_source")) s.scriptSource = o["script_source"].toString();
     if (o.contains("loop_interval")) s.loopInterval = o["loop_interval"].toInt();
+    if (o.contains("theme")) s.theme = o["theme"].toString().toLower();
     if (o.contains("backend")) s.backend = o["backend"].toString().toLower();
     if (o.contains("mcp_endpoint")) s.mcpEndpoint = o["mcp_endpoint"].toString();
     return {};

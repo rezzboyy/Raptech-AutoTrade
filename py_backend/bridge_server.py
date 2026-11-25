@@ -84,6 +84,9 @@ class _BridgeLogHandler(logging.Handler):
             elif "backend mcp" in msg.lower():
                 tag = "MT5"
                 msg = f"Menggunakan koneksi MCP MT5 ({settings.mcp_endpoint})."
+            elif "backend simulasi" in msg.lower():
+                tag = "SIMULASI"
+                msg = raw_msg
             elif "simbol" in msg.lower() and "disesuaikan" in msg.lower():
                 tag = "MT5"
             elif "strategi diperbarui" in msg.lower():
@@ -212,11 +215,17 @@ class PythonEngineWorker:
                 # 2. Monitoring Akun, Posisi, dan Virtual Exits berkala (~1 detik)
                 if now - last_poll_time >= 1.0:
                     last_poll_time = now
+                    backend = self.engine.backend
+                    # Di mode simulasi, majukan pasar sintetis 1 bar tiap detik agar chart & SL/TP hidup
+                    if hasattr(backend, "step_bar"):
+                        try:
+                            backend.step_bar(self.chart_symbol)
+                        except Exception:
+                            pass
                     account = self.engine.poll_account()
                     if account:
                         self.emitter.send_event("accountUpdated", account)
 
-                    backend = self.engine.backend
                     if (not getattr(backend, "_experts_trade_allowed", True) and tick % 10 == 0):
                         try:
                             backend.account_info()
@@ -406,6 +415,12 @@ class BridgeService:
                 settings.mcp_api_key = str(params["mcp_api_key"])
             if "symbol" in params and params["symbol"]:
                 settings.symbol = str(params["symbol"])
+            if "sim_balance" in params:
+                settings.sim_balance = max(100.0, float(params["sim_balance"]))
+            if "sim_scenario" in params and params["sim_scenario"]:
+                settings.sim_scenario = str(params["sim_scenario"]).strip().lower()
+            if "sim_spread_points" in params:
+                settings.sim_spread_points = max(1, int(params["sim_spread_points"]))
 
             # Jika worker lama masih aktif, hentikan
             if self.worker and self.worker.running:
@@ -579,6 +594,28 @@ class BridgeService:
             return {"ok": False, "message": str(exc)}
         except Exception as exc:
             return {"ok": False, "message": f"Syntax error: {exc}"}
+
+    def handle_run_script_simulation(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        from src.backends.sim_backend import run_script_replay
+        src = params.get("source", "")
+        symbol = params.get("symbol") or settings.symbol or "XAUUSDm"
+        timeframe = params.get("timeframe") or settings.timeframe_str or "M5"
+        scenario = params.get("scenario") or getattr(settings, "sim_scenario", "volatile") or "volatile"
+        bars = int(params.get("bars", 120) or 120)
+        initial_balance = float(params.get("initial_balance", getattr(settings, "sim_balance", 10000.0)) or 10000.0)
+        spread_points = int(params.get("spread_points", getattr(settings, "sim_spread_points", 25)) or 25)
+
+        res = run_script_replay(
+            source=src,
+            symbol=symbol,
+            timeframe=timeframe,
+            scenario=scenario,
+            bars=bars,
+            initial_balance=initial_balance,
+            spread_points=spread_points,
+        )
+        self.emitter.send_event("simulationResult", res)
+        return res
 
     def handle_verify_algo_trading(self, params: Dict[str, Any]) -> Dict[str, Any]:
         backend = self.engine.backend if self.engine else None

@@ -5,9 +5,23 @@
 
 JsHighlighter::JsHighlighter(QObject *parent) : QSyntaxHighlighter(parent)
 {
+    rebuildRules();
+}
+
+void JsHighlighter::rebuildRules()
+{
+    m_rules.clear();
+
+    // Palet kontras tinggi untuk mode gelap dan mode terang yang nyaman di mata
+    const QColor cKeyword(m_isDark ? "#c084fc" : "#7E22CE");
+    const QColor cBuiltin(m_isDark ? "#38bdf8" : "#0369A1");
+    const QColor cNumber(m_isDark ? "#f59e0b" : "#B45309");
+    const QColor cString(m_isDark ? "#4ade80" : "#15803D");
+    const QColor cComment(m_isDark ? "#6b7280" : "#64748B");
+
     // Keyword JavaScript & Python
     QTextCharFormat keywordFormat;
-    keywordFormat.setForeground(QColor("#c084fc"));
+    keywordFormat.setForeground(cKeyword);
     keywordFormat.setFontWeight(QFont::Bold);
     const QStringList keywords = {
         "\\bvar\\b", "\\blet\\b", "\\bconst\\b", "\\bfunction\\b", "\\breturn\\b",
@@ -21,20 +35,30 @@ JsHighlighter::JsHighlighter(QObject *parent) : QSyntaxHighlighter(parent)
 
     // Objek ctx & Math (built-in yang umum dipakai).
     QTextCharFormat builtinFormat;
-    builtinFormat.setForeground(QColor("#38bdf8"));
+    builtinFormat.setForeground(cBuiltin);
     m_rules.append({QRegularExpression("\\bctx\\b"), builtinFormat});
     m_rules.append({QRegularExpression("\\bMath\\b"), builtinFormat});
 
     // Angka.
     QTextCharFormat numberFormat;
-    numberFormat.setForeground(QColor("#f59e0b"));
+    numberFormat.setForeground(cNumber);
     m_rules.append({QRegularExpression("\\b[0-9]+(\\.[0-9]+)?\\b"), numberFormat});
 
     // String (single & double quote) — diproses terpisah agar menang atas angka/keyword.
-    m_stringFormat.setForeground(QColor("#4ade80"));
+    m_stringFormat.setForeground(cString);
     // Komentar // atau # ... akhir baris.
-    m_commentFormat.setForeground(QColor("#6b7280"));
+    m_commentFormat.setForeground(cComment);
     m_commentFormat.setFontItalic(true);
+}
+
+void JsHighlighter::setIsDark(bool dark)
+{
+    if (m_isDark == dark)
+        return;
+    m_isDark = dark;
+    rebuildRules();
+    emit isDarkChanged();
+    rehighlight();
 }
 
 void JsHighlighter::setQuickDocument(QQuickTextDocument *doc)

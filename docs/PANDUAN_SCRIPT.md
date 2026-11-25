@@ -295,18 +295,7 @@ def on_bar(ctx):
     return None
 ```
 
-Skrip contoh lain tersedia di folder `strategies/scripts/`:
-- `fast_cycle_recovery.py` — **Fast Cycle & Adaptive Recovery** (Eksekusi cepat BUY/SELL, siklus kontinu, recovery cepat adaptif tren pasar + batas pengaman lot & steps)
-- `safe_precision_scalper.py` — **Safe Precision Scalper Pro** (Scalping aman & presisi: EMA 200 trend, EMA 8/21 momentum, Stoch pullback, RSI healthy zone, filter spread, filter rollover & weekend, ATR dynamic SL/TP, emergency invalidation exit)
-- `full_settings_example.py` — contoh lengkap dengan seluruh variabel `SETTINGS` terpusat
-- `ema_cross.py` — EMA crossover
-- `rsi_reversal.py` — RSI keluar oversold/overbought
-- `bollinger_breakout.py` — breakout Bollinger Bands
-- `multi_confirm.py` — multi-konfirmasi tren + RSI + MACD (anti-tumpuk posisi)
-- `cbot_style.py` — order langsung gaya cBot (`ctx.buy`, `ctx.sell`)
-- `managed_exit.py` — kelola posisi (`ctx.close_position`, `ctx.modify`)
-- `stoch_adx.py` — filter tren ADX + pemicu Stochastic
-- `supertrend_ichimoku.py` — kombinasi Supertrend + Ichimoku Cloud
+> Folder skrip strategi bawaan saat ini dikosongkan untuk persiapan strategi baru. Anda dapat membuat dan menyimpan skrip strategi kustom sendiri di tab **Programmer Studio**.
 
 ---
 

@@ -92,21 +92,21 @@ Rectangle {
                         Layout.alignment: Qt.AlignTop
                         radius: 3
                         color: {
-                            if (tagStr === "ORDER" || tagStr === "SUKSES") return "#163a24"
-                            if (tagStr === "ERROR" || tagStr === "DITOLAK" || tagStr === "GAGAL") return "#3b1a1f"
-                            if (tagStr === "RISIKO" || tagStr === "PERINGATAN") return "#3a2a14"
-                            if (tagStr === "SKRIP" || tagStr === "SINYAL") return "#142d42"
-                            if (tagStr === "MT5" || tagStr === "PROFIL") return "#281b3d"
-                            if (tagStr === "JURNAL") return "#133830"
+                            if (tagStr === "ORDER" || tagStr === "SUKSES") return Theme.isDark ? "#163a24" : "#DCFCE7"
+                            if (tagStr === "ERROR" || tagStr === "DITOLAK" || tagStr === "GAGAL") return Theme.isDark ? "#3b1a1f" : "#FEE2E2"
+                            if (tagStr === "RISIKO" || tagStr === "PERINGATAN") return Theme.isDark ? "#3a2a14" : "#FEF3C7"
+                            if (tagStr === "SKRIP" || tagStr === "SINYAL" || tagStr === "SIMULASI") return Theme.isDark ? "#142d42" : "#DBEAFE"
+                            if (tagStr === "MT5" || tagStr === "PROFIL") return Theme.isDark ? "#281b3d" : "#EDE9FE"
+                            if (tagStr === "JURNAL") return Theme.isDark ? "#133830" : "#D1FAE5"
                             return Theme.surfaceAlt
                         }
                         border.color: {
                             if (tagStr === "ORDER" || tagStr === "SUKSES") return Theme.up
                             if (tagStr === "ERROR" || tagStr === "DITOLAK" || tagStr === "GAGAL") return Theme.down
                             if (tagStr === "RISIKO" || tagStr === "PERINGATAN") return Theme.warn
-                            if (tagStr === "SKRIP" || tagStr === "SINYAL") return "#60a5fa"
-                            if (tagStr === "MT5" || tagStr === "PROFIL") return "#a78bfa"
-                            if (tagStr === "JURNAL") return "#34d399"
+                            if (tagStr === "SKRIP" || tagStr === "SINYAL" || tagStr === "SIMULASI") return Theme.isDark ? "#60a5fa" : "#1D4ED8"
+                            if (tagStr === "MT5" || tagStr === "PROFIL") return Theme.isDark ? "#a78bfa" : "#6D28D9"
+                            if (tagStr === "JURNAL") return Theme.isDark ? "#34d399" : "#047857"
                             return Theme.border
                         }
                         Text {
@@ -120,9 +120,9 @@ Rectangle {
                                 if (parent.tagStr === "ORDER" || parent.tagStr === "SUKSES") return Theme.up
                                 if (parent.tagStr === "ERROR" || parent.tagStr === "DITOLAK" || parent.tagStr === "GAGAL") return Theme.down
                                 if (parent.tagStr === "RISIKO" || parent.tagStr === "PERINGATAN") return Theme.warn
-                                if (parent.tagStr === "SKRIP" || parent.tagStr === "SINYAL") return "#60a5fa"
-                                if (parent.tagStr === "MT5" || parent.tagStr === "PROFIL") return "#a78bfa"
-                                if (parent.tagStr === "JURNAL") return "#34d399"
+                                if (parent.tagStr === "SKRIP" || parent.tagStr === "SINYAL" || parent.tagStr === "SIMULASI") return Theme.isDark ? "#60a5fa" : "#1D4ED8"
+                                if (parent.tagStr === "MT5" || parent.tagStr === "PROFIL") return Theme.isDark ? "#a78bfa" : "#6D28D9"
+                                if (parent.tagStr === "JURNAL") return Theme.isDark ? "#34d399" : "#047857"
                                 return Theme.textSecondary
                             }
                         }

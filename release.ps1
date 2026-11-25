@@ -120,7 +120,7 @@ if (Test-Path $JUNC) {
 }
 
 # 2a. Python Unit Tests (pytest)
-Write-Host "      --> Menjalankan 291 Unit Test Python Backend..." -ForegroundColor Gray
+Write-Host "      --> Menjalankan Unit Test Python Backend..." -ForegroundColor Gray
 $env:PYTHONPATH = "$scriptDir\py_backend"
 $pyTestOutput = & pytest "$scriptDir\py_backend\tests" -q 2>&1
 if ($LASTEXITCODE -ne 0) {

@@ -161,6 +161,14 @@ class Settings:
     script_name: str = os.getenv("SCRIPT_NAME", "")
     script_source: str = ""
 
+    # Mode UI ("dark" | "light")
+    theme: str = os.getenv("THEME", "dark")
+
+    # Mode Simulasi (paper-trading & uji skrip)
+    sim_balance: float = _get_float("SIM_BALANCE", 10000.0)
+    sim_scenario: str = os.getenv("SIM_SCENARIO", "volatile")
+    sim_spread_points: int = _get_int("SIM_SPREAD_POINTS", 25)
+
     # Interval loop trading (detik)
     loop_interval: int = _get_int("LOOP_INTERVAL", 15)
 

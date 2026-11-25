@@ -45,6 +45,7 @@ _FIELDS = (
     "script_name",
     "script_source",
     "loop_interval",
+    "theme",
     "backend",
     "mcp_endpoint",
 )
@@ -100,16 +101,17 @@ def validate(data: dict) -> list:
     if not isinstance(strat_params, dict):
         errors.append("Parameter strategi harus berupa objek/dict.")
     elif strat_name == "custom_script":
-        # Validasi skrip kustom: harus kompilasi & punya on_bar.
+        # Validasi skrip kustom bila diisi; kosong diizinkan (engine fallback ke DEFAULT_TEMPLATE).
         src = data.get("script_source", settings.script_source)
-        try:
-            from strategies.script_runtime import compile_script, ScriptError
+        if src and str(src).strip():
             try:
-                compile_script(src)
-            except ScriptError as exc:
-                errors.append(f"Skrip strategi tidak valid: {exc}")
-        except Exception:  # noqa: BLE001
-            pass
+                from strategies.script_runtime import compile_script, ScriptError
+                try:
+                    compile_script(src)
+                except ScriptError as exc:
+                    errors.append(f"Skrip strategi tidak valid: {exc}")
+            except Exception:  # noqa: BLE001
+                pass
     else:
         errors.extend(strategy_loader.validate(strat_name, strat_params))
 
@@ -185,10 +187,15 @@ def validate(data: dict) -> list:
     except (TypeError, ValueError):
         errors.append("Max consecutive losses harus bilangan bulat.")
 
+    # Validasi tema UI.
+    theme = str(data.get("theme", getattr(settings, "theme", "dark"))).lower()
+    if theme not in ("dark", "light"):
+        errors.append("Theme harus 'dark' atau 'light'.")
+
     # Validasi backend koneksi.
     backend = str(data.get("backend", settings.backend)).lower()
-    if backend not in ("native", "mcp"):
-        errors.append("Backend harus 'native' atau 'mcp'.")
+    if backend not in ("native", "mcp", "sim"):
+        errors.append("Backend harus 'native', 'mcp', atau 'sim'.")
     elif backend == "mcp":
         api_key = data.get("mcp_api_key", settings.mcp_api_key)
         if not str(api_key or "").strip():
@@ -225,7 +232,7 @@ def _coerce(field: str, value):
         return str(value).upper()
     if field == "strategy_params":
         return dict(value) if value else {}
-    if field == "backend":
+    if field in ("backend", "theme"):
         return str(value).lower()
     return str(value)
 

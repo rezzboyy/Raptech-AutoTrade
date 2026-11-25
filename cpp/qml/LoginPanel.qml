@@ -36,7 +36,7 @@ Rectangle {
         var currentMode = bot ? bot.backend : "mcp"
         if (!currentMode) currentMode = "mcp"
         backendMode = currentMode
-        backendBox.currentIndex = (currentMode === "native") ? 1 : 0
+        backendBox.currentIndex = (currentMode === "native") ? 1 : (currentMode === "sim" ? 2 : 0)
     }
 
     function refreshProfiles() {
@@ -97,9 +97,13 @@ Rectangle {
                     id: backendBox
                     Layout.preferredHeight: root.ctrlHeight
                     enabled: !root.botConnected
-                    model: ["MCP (Server MT5) — Rekomendasi", "Native (Peluncur Terminal MT5)"]
+                    model: [
+                        "MCP (Server MT5) — Rekomendasi",
+                        "Native (Peluncur Terminal MT5)",
+                        "Simulasi (Paper-Trading & Uji Skrip)"
+                    ]
                     onActivated: {
-                        var mode = (currentIndex === 1) ? "native" : "mcp"
+                        var mode = (currentIndex === 1) ? "native" : (currentIndex === 2 ? "sim" : "mcp")
                         root.backendMode = mode
                         if (bot) bot.setBackend(mode)
                     }
@@ -215,21 +219,6 @@ Rectangle {
                     Label { text: "Path (opsional)"; color: Theme.textSecondary; Layout.preferredWidth: root.labelWidth }
                     CField { id: pathField; Layout.preferredHeight: root.ctrlHeight; enabled: !root.botConnected; placeholderText: "Path terminal64.exe (opsional)" }
                 }
-                Rectangle {
-                    Layout.fillWidth: true
-                    implicitHeight: noteText.implicitHeight + 16
-                    color: Theme.surfaceAlt; radius: 6; border.color: Theme.divider
-                    RowLayout {
-                        anchors.fill: parent; anchors.margins: 8; spacing: 8
-                        Image { source: "qrc:/assets/shield.svg"; sourceSize.width: 14; sourceSize.height: 14 }
-                        Text {
-                            id: noteText
-                            Layout.fillWidth: true
-                            wrapMode: Text.WordWrap; color: Theme.textSecondary; font.pixelSize: 10; lineHeight: 1.2
-                            text: "Tips C++: Jika terminal MT5 Exness Anda sudah terbuka, gunakan metode 'MCP (Server MT5)' di atas untuk koneksi instan & aman tanpa membuka jendela MT5 baru dan tanpa perlu memasukkan password akun broker."
-                        }
-                    }
-                }
             }
 
             // ====== MODE MCP ======
@@ -321,10 +310,74 @@ Rectangle {
                 }
             }
 
-            // ----- Simpan sbg (kedua mode) -----
+            // ====== MODE SIMULASI ======
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                visible: root.backendMode === "sim"
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Label { text: "Simbol Uji"; color: Theme.textSecondary; Layout.preferredWidth: root.labelWidth }
+                    CField {
+                        id: simSymbolField
+                        Layout.preferredHeight: root.ctrlHeight
+                        enabled: !root.botConnected
+                        text: (bot && bot.chartSymbol) ? bot.chartSymbol : "XAUUSDm"
+                        placeholderText: "contoh: XAUUSDm, EURUSDm"
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Label { text: "Saldo Virtual"; color: Theme.textSecondary; Layout.preferredWidth: root.labelWidth }
+                    CField {
+                        id: simBalanceField
+                        Layout.preferredHeight: root.ctrlHeight
+                        enabled: !root.botConnected
+                        text: "10000"
+                        validator: DoubleValidator { bottom: 100 }
+                        placeholderText: "USD (min 100)"
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Label { text: "Skenario"; color: Theme.textSecondary; Layout.preferredWidth: root.labelWidth }
+                    CCombo {
+                        id: simScenarioBox
+                        Layout.preferredHeight: root.ctrlHeight
+                        enabled: !root.botConnected
+                        model: ["volatile", "uptrend", "downtrend", "sideways", "spread_spike"]
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Label { text: "Spread (pts)"; color: Theme.textSecondary; Layout.preferredWidth: root.labelWidth }
+                    CField {
+                        id: simSpreadField
+                        Layout.preferredHeight: root.ctrlHeight
+                        enabled: !root.botConnected
+                        text: "25"
+                        validator: IntValidator { bottom: 1; top: 5000 }
+                    }
+                }
+                Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    color: Theme.accent
+                    font.pixelSize: 10; lineHeight: 1.2
+                    text: "Mode Simulasi berjalan 100% terisolasi dari akun MT5 Demo/Real. Ideal untuk menguji validitas skrip, pending order, SL/TP, serta trailing/recovery sebelum live."
+                }
+            }
+
+            // ----- Simpan sbg (hanya MT5 Native / MCP) -----
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
+                visible: root.backendMode !== "sim"
                 Label { text: "Simpan sbg"; color: Theme.textSecondary; Layout.preferredWidth: root.labelWidth }
                 CField { id: saveNameField; Layout.preferredHeight: root.ctrlHeight; enabled: !root.botConnected; placeholderText: "nama profil (opsional)" }
             }
@@ -335,7 +388,7 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: 8
                 CButton {
-                    text: root.botConnected ? "Terhubung" : "Login & Connect"
+                    text: root.botConnected ? "Terhubung" : (root.backendMode === "sim" ? "Mulai Simulasi" : "Login & Connect")
                     icon.source: "qrc:/assets/power.svg"; icon.width: 15; icon.height: 15
                     bg: root.botConnected ? Theme.surfaceAlt : Theme.accent
                     fg: "#ffffff"
@@ -344,7 +397,14 @@ Rectangle {
                     Layout.preferredHeight: 40
                     font.bold: true
                     onClicked: {
-                        if (root.backendMode === "mcp") {
+                        if (root.backendMode === "sim") {
+                            bot.connectSim({
+                                "symbol": simSymbolField.text.trim() || "XAUUSDm",
+                                "balance": parseFloat(simBalanceField.text || "10000"),
+                                "scenario": simScenarioBox.currentText,
+                                "spread_points": parseInt(simSpreadField.text || "25")
+                            })
+                        } else if (root.backendMode === "mcp") {
                             bot.connectMcp({ "endpoint": endpointField.text, "api_key": apiKeyField.text }, saveNameField.text)
                         } else {
                             bot.loginAndConnect({

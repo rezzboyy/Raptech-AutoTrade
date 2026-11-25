@@ -16,7 +16,7 @@ ApplicationWindow {
     color: Theme.bg
     font.pixelSize: 12
 
-    Material.theme: Material.Dark
+    Material.theme: Theme.isDark ? Material.Dark : Material.Light
     Material.accent: Theme.accent
 
     readonly property bool botConnected: bot ? bot.connected : false
@@ -94,7 +94,19 @@ ApplicationWindow {
                 }
                 Rectangle { visible: window.botConnected; width: 1; height: 18; color: Theme.divider }
 
+                // Tombol Toggle Mode Gelap / Terang
+                Button {
+                    flat: true
+                    icon.source: Theme.isDark ? "qrc:/assets/sun.svg" : "qrc:/assets/moon.svg"
+                    icon.width: 14; icon.height: 14
+                    text: Theme.isDark ? "Light" : "Dark"
+                    Layout.preferredHeight: 30
+                    onClicked: if (bot) bot.setTheme(Theme.isDark ? "light" : "dark")
+                    ToolTip.visible: hovered
+                    ToolTip.text: Theme.isDark ? "Ubah ke Mode Terang (Soft Slate Light Mode)" : "Ubah ke Mode Gelap (Dark Mode)"
+                }
 
+                Rectangle { width: 1; height: 18; color: Theme.divider }
 
                 // Indikator Pembaruan Aplikasi (OTA)
                 Button {

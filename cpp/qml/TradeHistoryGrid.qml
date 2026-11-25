@@ -61,11 +61,11 @@ Rectangle {
         anchors.fill: parent
         spacing: 0
 
-        // ================= Header Tabel (Slate Navy) =================
+        // ================= Header Tabel =================
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 32
-            color: "#101622"
+            color: Theme.tableHeader
             border.color: Theme.border
             border.width: 1
 
@@ -109,7 +109,7 @@ Rectangle {
                 color: {
                     if (index === root.selectedIndex) return Theme.selectedRow
                     if (rowMouseArea.containsMouse) return Theme.surfaceHighlight
-                    return index % 2 === 0 ? "#0B0E14" : "#0E121A"
+                    return index % 2 === 0 ? Theme.rowEven : Theme.rowOdd
                 }
 
                 readonly property bool isSelected: index === root.selectedIndex
@@ -205,7 +205,7 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 32
-            color: "#0E121A"
+            color: Theme.surface
             border.color: Theme.border
             border.width: 1
 
@@ -232,7 +232,7 @@ Rectangle {
                     Layout.preferredHeight: 22
                     Layout.preferredWidth: clearBtnContent.implicitWidth + 14
                     radius: 4
-                    color: trashMouse.containsMouse ? "#331616" : Theme.surfaceAlt
+                    color: trashMouse.containsMouse ? Theme.dangerHover : Theme.surfaceAlt
                     border.color: trashMouse.containsMouse ? Theme.down : Theme.divider
                     border.width: 1
 
@@ -278,7 +278,7 @@ Rectangle {
                     Layout.preferredHeight: 22
                     Layout.preferredWidth: resetStatsBtnContent.implicitWidth + 14
                     radius: 4
-                    color: resetStatsMouse.containsMouse ? "#1E293B" : Theme.surfaceAlt
+                    color: resetStatsMouse.containsMouse ? Theme.hoverSurface : Theme.surfaceAlt
                     border.color: resetStatsMouse.containsMouse ? Theme.accent : Theme.divider
                     border.width: 1
 

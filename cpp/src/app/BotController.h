@@ -18,6 +18,7 @@ class BotController : public QObject
     Q_PROPERTY(bool trading READ trading NOTIFY tradingChanged)
     Q_PROPERTY(QString status READ status NOTIFY statusChanged)
     Q_PROPERTY(QString backend READ backend NOTIFY backendChanged)
+    Q_PROPERTY(QString theme READ theme NOTIFY themeChanged)
     Q_PROPERTY(QString appVersion READ appVersion CONSTANT)
     Q_PROPERTY(double balance READ balance NOTIFY accountChanged)
     Q_PROPERTY(double equity READ equity NOTIFY accountChanged)
@@ -46,6 +47,7 @@ public:
     bool trading() const { return m_trading; }
     QString status() const { return m_status; }
     QString backend() const;
+    QString theme() const;
     QString appVersion() const { return Xaviq::APP_VERSION; }
     double balance() const { return m_balance; }
     double equity() const { return m_equity; }
@@ -83,6 +85,7 @@ public slots:
     void setChartSymbol(const QString &symbol);
     void setTimeframe(const QString &tf);
     void setBackend(const QString &name);
+    void setTheme(const QString &themeName);
     void setMcpConfig(const QString &endpoint, const QString &apiKey);
     void refreshStats();
     void resetStats();
@@ -91,8 +94,14 @@ public slots:
     bool applyConfig(const QVariantMap &cfg);
     bool saveConfig(const QVariantMap &cfg);
     QVariantList getStrategies();
-    // Login/koneksi MCP + profil.
+    // Login/koneksi MCP, Simulasi + profil.
     bool connectMcp(const QVariantMap &cfg, const QString &saveName = QString());
+    bool connectSim(const QVariantMap &cfg);
+    void runScriptSimulation(const QString &source,
+                             const QString &scenario = QStringLiteral("volatile"),
+                             int bars = 120,
+                             double initialBalance = 10000.0,
+                             int spreadPoints = 25);
     QVariantList listMcpProfiles();
     QVariantMap loadMcpProfileFile(const QString &url);
     bool deleteMcpProfile(const QString &file);
@@ -147,6 +156,8 @@ signals:
     void journalEntry(const QVariantMap &entry);
     void profilesChanged(const QVariantList &profiles);
     void mcpProfilesChanged(const QVariantList &profiles);
+    void themeChanged(const QString &themeName);
+    void simulationFinished(const QVariantMap &result);
 
 private slots:
     void onAccount(const QVariantMap &account);
@@ -161,9 +172,11 @@ private slots:
     void onWorkerConnected(bool connected);
     void onWorkerChartSymbol(const QString &symbol);
     void onWorkerTimeframe(const QString &timeframe);
+    void onSimulationResult(const QVariantMap &result);
     void onWorkerStopped();
 
 private:
+    void ensureBridgeWorker();
     void setStatus(const QString &s);
     void setConnectedState(bool v);
     void setTradingState(bool v);

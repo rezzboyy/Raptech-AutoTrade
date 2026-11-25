@@ -11,7 +11,7 @@
 **XAVIQ Trading Engine** = bot trading MetaTrader 5 (MT5).
 - **Arsitektur Hybrid (Frontend C++ Native + Backend Engine Python)**:
   - **GUI Frontend C++ Native (Qt 6.8.1 / MinGW 64-bit)** di `cpp/`: GUI desktop C++ native cepat, responsif (~45 MB RAM), QML terkompilasi, editor skrip.
-  - **Trading Engine Python** di `py_backend/` (dari sistem cadangan): menjalankan logika trading penuh (`BotEngine`), manajemen risiko, proteksi SL/TP virtual, trailing stop, strategi bawaan, serta skrip kustom Python (`strategies/scripts/`).
+  - **Trading Engine Python** di `py_backend/` (dari sistem cadangan): menjalankan logika trading penuh (`BotEngine`), manajemen risiko, proteksi SL/TP virtual, trailing stop, strategi bawaan, serta runtime skrip kustom Python (`script_runtime.py`).
   - **Koneksi MT5 Fleksibel**: Mendukung **Native MT5** (library resmi `MetaTrader5` IPC terminal langsung) serta **MCP** (Model Context Protocol HTTP JSON-RPC).
   - **Jembatan IPC Berkecepatan Tinggi**: Menggunakan `PyBridgeWorker` (C++) dan `bridge_server.py` (Python) berbasis NDJSON stdio streaming, bebas konflik port dan otomatis mati rapi saat aplikasi ditutup.
 - Fitur utama: auto-trading, order manual & pending, manajemen risiko & proteksi, chart candle & equity, statistik, jurnal aksi.
@@ -60,7 +60,7 @@ deploy_cpp.bat            # 1-Klik: Paketkan rilis mandiri C++ (windeployqt + py
 py_backend/               # Trading Engine Python
   bridge_server.py        # IPC NDJSON bridge server (stdio streaming)
   src/                    # BotEngine, NativeBackend, McpBackend, TradeRules, RiskManager, dll.
-  strategies/             # Strategi trading & scripts (Python)
+  strategies/             # Strategi trading & runtime skrip (Python)
   config/                 # Settings & ConfigStore
   tests/                  # 242 unit tests pytest (100% pass)
 cpp/                      # Sumber C++ (Qt 6.8.1 / MinGW 64-bit)

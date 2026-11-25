@@ -48,15 +48,14 @@ app/         Worker (QThread loop), BotController (Q_PROPERTY/slot/sinyal ke QML
 ui/          JsHighlighter (QSyntaxHighlighter JS untuk editor)
 main.cpp     entry: register `bot`, QML, mode --smoke
 qml/         UI (main + AccountBar/Login/Manual/Programmer/Stats/Positions/Chart/Log/Journal)
-scripts/     contoh skrip JS (ema_cross, cbot_style, managed_exit)
 ```
 
 **Thread-safety:** semua panggilan MCP terjadi di SATU worker thread (`Worker` di
 `QThread`). QML memanggil slot di main thread; perintah manual diantrikan (QMutex) ke
 worker; worker mengirim data ke UI via sinyal queued.
 
-## Mode Programmer (JavaScript)
-Lihat `cpp/scripts/README.md`. Kontrak: `SETTINGS` (opsional), `PARAMS` (opsional),
+## Mode Programmer
+Kontrak: `SETTINGS` (opsional), `PARAMS` (opsional),
 `function on_bar(ctx)`. `ctx` menyediakan data harga, indikator, akun/posisi, dan
 perintah `buy/sell/close_position/close_all/modify`. Sandbox QJSEngine (tanpa akses
 file/OS) + watchdog anti loop tak terbatas.

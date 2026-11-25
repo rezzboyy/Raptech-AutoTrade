@@ -82,8 +82,7 @@ dari UI diantrikan (thread-safe queue) dan dieksekusi oleh worker.
 │   ├── base.py              # interface + registry + skema parameter
 │   ├── ma_cross.py, rsi.py, bollinger.py, macd.py,
 │   ├── stochastic.py, multi_indicator.py
-│   ├── script_runtime.py    # runtime skrip kustom (Mode Programmer, sandbox)
-│   └── scripts/             # skrip strategi contoh (ema_cross, cbot_style, dll)
+│   └── script_runtime.py    # runtime skrip kustom (Mode Programmer, sandbox)
 ├── tools/                   # utilitas & diagnostik (dijalankan dari root)
 │   ├── make_icon.py         # generator ikon (dari icon.ico sumber)
 │   ├── CekVersi.py/.bat     # cek kecocokan versi terminal MT5 vs paket Python

@@ -612,7 +612,7 @@ Rectangle {
                         ctx.fillText("70", mL + plotW + 4, subYOf(70) + 3)
 
                         // Level 50 (Mid)
-                        ctx.strokeStyle = "rgba(255, 255, 255, 0.12)"; ctx.setLineDash([2, 4])
+                        ctx.strokeStyle = Theme.isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(15, 23, 42, 0.14)"; ctx.setLineDash([2, 4])
                         ctx.beginPath(); ctx.moveTo(mL, subYOf(50)); ctx.lineTo(mL + plotW, subYOf(50)); ctx.stroke()
                         ctx.fillText("50", mL + plotW + 4, subYOf(50) + 3)
 
@@ -658,7 +658,7 @@ Rectangle {
                         // Garis Zero
                         if (subMin <= 0 && subMax >= 0) {
                             var zY = subDynY(0)
-                            ctx.strokeStyle = "rgba(255, 255, 255, 0.2)"; ctx.setLineDash([2, 2])
+                            ctx.strokeStyle = Theme.isDark ? "rgba(255, 255, 255, 0.2)" : "rgba(15, 23, 42, 0.22)"; ctx.setLineDash([2, 2])
                             ctx.beginPath(); ctx.moveTo(mL, zY); ctx.lineTo(mL + plotW, zY); ctx.stroke()
                             ctx.setLineDash([])
                         }
@@ -984,8 +984,8 @@ Rectangle {
                                     radius: 8
                                     color: itemMouse.containsMouse
                                            ? Theme.surfaceAlt
-                                           : (isActive ? "rgba(255, 255, 255, 0.03)" : "transparent")
-                                    border.color: isActive ? "rgba(0, 210, 211, 0.3)" : "transparent"
+                                           : (isActive ? (Theme.isDark ? "rgba(255, 255, 255, 0.03)" : "rgba(2, 132, 199, 0.08)") : "transparent")
+                                    border.color: isActive ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45) : "transparent"
                                     border.width: 1
 
                                     readonly property bool isActive: root.activeIndicatorIds.indexOf(modelData.id) !== -1

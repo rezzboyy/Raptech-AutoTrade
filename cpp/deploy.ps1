@@ -22,8 +22,12 @@ if (Test-Path $dist) { Remove-Item -Recurse -Force $dist }
 New-Item -ItemType Directory -Path $dist | Out-Null
 
 Copy-Item "$root\build\xaviq.exe" "$dist\XTradingEngine.exe"
-Copy-Item -Recurse -Force "$workspace\scripts" "$dist\scripts" -ErrorAction SilentlyContinue
 Copy-Item -Recurse -Force "$workspace\py_backend" "$dist\py_backend"
+# Jangan sertakan script strategi / state runtime apa pun di paket rilis/distribusi
+Remove-Item -Recurse -Force "$dist\scripts" -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force "$dist\py_backend\strategies\scripts" -ErrorAction SilentlyContinue
+Remove-Item -Force "$dist\script_state.json" -ErrorAction SilentlyContinue
+Remove-Item -Force "$dist\py_backend\script_state.json" -ErrorAction SilentlyContinue
 
 # Salin runtime standalone py_bridge (jika sudah dikompilasi atau buat jika belum)
 $pyBridgeSrc = "$workspace\build_test_bridge\py_bridge"

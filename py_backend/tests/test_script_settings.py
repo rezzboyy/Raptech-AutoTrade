@@ -228,8 +228,10 @@ def on_bar(ctx):
     assert keys["threshold"]["type"] == "float"
 
 
-def test_controller_apply_script_auto_sync():
+def test_controller_apply_script_auto_sync(tmp_path, monkeypatch):
     """Controller.applyScript menyinkronkan seluruh settings dari skrip ke settings global."""
+    from src import config_store
+    monkeypatch.setattr(config_store, "CONFIG_FILE", str(tmp_path / "config.json"))
     ctrl = BotController()
     src = """
 NAME = "MyFullStrategy"

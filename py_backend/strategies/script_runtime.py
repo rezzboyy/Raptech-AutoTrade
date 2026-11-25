@@ -20,7 +20,11 @@ from strategies.base import Strategy, SIGNAL_BUY, SIGNAL_SELL
 from src.logger import get_logger
 
 # Aksi perintah yang dikenali engine dari skrip.
-_VALID_ACTIONS = {SIGNAL_BUY, SIGNAL_SELL, "CLOSE", "CLOSE_ALL", "MODIFY"}
+_VALID_ACTIONS = {
+    SIGNAL_BUY, SIGNAL_SELL,
+    "CLOSE", "CLOSE_ALL", "CLOSE_SIDE", "MODIFY",
+    "PENDING", "DELETE_ORDER", "MODIFY_ORDER",
+}
 
 logger = get_logger("mt5bot")
 
@@ -790,7 +794,8 @@ class ScriptContext:
 
     def __init__(self, df: pd.DataFrame, params: dict, position=None,
                  positions=None, account=None, symbol="", tick=None, spec=None,
-                 settings: dict = None):
+                 settings: dict = None, pending_orders=None, rates_provider=None,
+                 state=None):
         self.open = [float(x) for x in df["open"]] if "open" in df else []
         self.high = [float(x) for x in df["high"]] if "high" in df else []
         self.low = [float(x) for x in df["low"]] if "low" in df else []
@@ -809,6 +814,9 @@ class ScriptContext:
         self.positions = list(positions or [])
         # Posisi tunggal (pertama) untuk kemudahan; None bila tak ada posisi terbuka.
         self.position = position if position is not None else (self.positions[0] if self.positions else None)
+        self.pending_orders = list(pending_orders or [])
+        self._rates_provider = rates_provider
+        self.state = state if isinstance(state, dict) else {}
         acc = account or {}
         self.balance = float(acc.get("balance", 0.0))
         self.equity = float(acc.get("equity", 0.0))
@@ -824,13 +832,19 @@ class ScriptContext:
         self.floating_profit = float(acc.get("profit", 0.0))
         self.unrealized_profit = self.floating_profit
 
-        # Harga & spread live (dari tick + spec simbol).
+        # Harga & spread live + spesifikasi simbol (dari tick + spec).
         tk = tick or {}
         sp = spec or {}
         self.bid = float(tk.get("bid", 0.0))
         self.ask = float(tk.get("ask", 0.0))
         self.point = float(sp.get("point", 0.0))
         self.digits = int(sp.get("digits", 5))
+        self.volume_min = float(sp.get("volume_min", 0.01) or 0.01)
+        self.volume_max = float(sp.get("volume_max", 100.0) or 100.0)
+        self.volume_step = float(sp.get("volume_step", 0.01) or 0.01)
+        self.stop_level = int(sp.get("stop_level", 0) or 0)
+        self.freeze_level = int(sp.get("freeze_level", 0) or 0)
+        self.contract_size = float(sp.get("contract_size", 0.0) or 0.0)
         self.spread = round((self.ask - self.bid) / self.point) if self.point > 0 else 0
 
         # Waktu bar terakhir (broker) & waktu sekarang (UTC) + pintasan sesi.
@@ -850,19 +864,51 @@ class ScriptContext:
     def log(self, msg):
         logger.info("[script] %s", msg)
 
+    def rates(self, timeframe: str, count: int = 200) -> dict:
+        """Ambil OHLCV multi-timeframe (mis. 'H1', 'M15') sebagai dict list."""
+        tf = str(timeframe or "").strip().upper()
+        if not tf or not callable(self._rates_provider):
+            return {}
+        try:
+            df_tf = self._rates_provider(tf, int(count))
+        except Exception:  # noqa: BLE001
+            return {}
+        if df_tf is None:
+            return {}
+        if isinstance(df_tf, dict):
+            return df_tf
+        if getattr(df_tf, "empty", True):
+            return {}
+        vol_col = "tick_volume" if "tick_volume" in df_tf else ("volume" if "volume" in df_tf else None)
+        return {
+            "open": [float(x) for x in df_tf["open"]] if "open" in df_tf else [],
+            "high": [float(x) for x in df_tf["high"]] if "high" in df_tf else [],
+            "low": [float(x) for x in df_tf["low"]] if "low" in df_tf else [],
+            "close": [float(x) for x in df_tf["close"]] if "close" in df_tf else [],
+            "volume": [float(x) for x in df_tf[vol_col]] if vol_col else [],
+        }
+
     # Indikator (delegasi ke fungsi modul).
     def sma(self, src, n): return sma(src, n)
     def ema(self, src, n): return ema(src, n)
     def rsi(self, src, n): return rsi(src, n)
     def stdev(self, src, n): return stdev(src, n)
-    def atr(self, n): return atr(self.high, self.low, self.close, n)
+    def atr(self, n, high=None, low=None, close=None):
+        h = self.high if high is None else high
+        l = self.low if low is None else low
+        c = self.close if close is None else close
+        return atr(h, l, c, n)
     def highest(self, src, n): return highest(src, n)
     def lowest(self, src, n): return lowest(src, n)
     def bbands(self, src, n, mult): return bbands(src, n, mult)
     def macd(self, src, fast=12, slow=26, signal=9): return macd(src, fast, slow, signal)
     def wma(self, src, n): return wma(src, n)
     def stochastic(self, k=14, d=3, smooth=3): return stochastic(self.high, self.low, self.close, k, d, smooth)
-    def adx(self, n=14): return adx(self.high, self.low, self.close, n)
+    def adx(self, n=14, high=None, low=None, close=None):
+        h = self.high if high is None else high
+        l = self.low if low is None else low
+        c = self.close if close is None else close
+        return adx(h, l, c, n)
     def cci(self, n=20): return cci(self.high, self.low, self.close, n)
     def vwap(self, n=14): return vwap(self.high, self.low, self.close, self.volume, n)
     def williams_r(self, n=14): return williams_r(self.high, self.low, self.close, n)
@@ -949,6 +995,64 @@ class ScriptContext:
         """Tutup semua posisi simbol ini."""
         return {"action": "CLOSE_ALL"}
 
+    def close_side(self, side: str):
+        """Tutup semua posisi satu sisi ('BUY' atau 'SELL') pada simbol ini."""
+        s = str(side or "").strip().upper()
+        if s not in ("BUY", "SELL"):
+            return None
+        return {"action": "CLOSE_SIDE", "side": s}
+
+    def _pending(self, order_type: str, price: float, volume=None, sl: float = 0.0,
+                 tp: float = 0.0, comment=None):
+        if price is None or float(price) <= 0.0:
+            return None
+        if volume is None:
+            volume = self.settings.get("volume", self.settings.get("lot"))
+        if volume is None or float(volume) <= 0.0:
+            return None
+        if comment is None:
+            comment = self.settings.get("comment")
+        cmd = {
+            "action": "PENDING",
+            "order_type": order_type,
+            "price": float(price),
+            "volume": float(volume),
+            "sl": float(sl or 0.0),
+            "tp": float(tp or 0.0),
+        }
+        if comment is not None:
+            cmd["comment"] = str(comment)
+        return cmd
+
+    def buy_stop(self, price: float, volume=None, sl: float = 0.0, tp: float = 0.0, comment=None):
+        return self._pending("buy_stop", price, volume, sl, tp, comment)
+
+    def sell_stop(self, price: float, volume=None, sl: float = 0.0, tp: float = 0.0, comment=None):
+        return self._pending("sell_stop", price, volume, sl, tp, comment)
+
+    def buy_limit(self, price: float, volume=None, sl: float = 0.0, tp: float = 0.0, comment=None):
+        return self._pending("buy_limit", price, volume, sl, tp, comment)
+
+    def sell_limit(self, price: float, volume=None, sl: float = 0.0, tp: float = 0.0, comment=None):
+        return self._pending("sell_limit", price, volume, sl, tp, comment)
+
+    def delete_order(self, order):
+        """Hapus pending order (dict order atau int ticket)."""
+        ticket = self._ticket_of(order, None)
+        return {"action": "DELETE_ORDER", "ticket": ticket} if ticket is not None else None
+
+    def modify_order(self, order, price: float, sl=None, tp=None):
+        """Ubah harga/SL/TP pending order (dict order atau int ticket)."""
+        ticket = self._ticket_of(order, None)
+        if ticket is None or price is None or float(price) <= 0.0:
+            return None
+        cmd = {"action": "MODIFY_ORDER", "ticket": ticket, "price": float(price)}
+        if sl is not None:
+            cmd["sl"] = float(sl)
+        if tp is not None:
+            cmd["tp"] = float(tp)
+        return cmd
+
     def modify(self, position=None, sl=None, tp=None):
         """Ubah SL/TP satu posisi (harga absolut)."""
         ticket = self._ticket_of(position, self.position)
@@ -978,22 +1082,32 @@ class ScriptStrategy(Strategy):
         self.PARAMS = {} if raw_params is None else raw_params
         self.params = ParamDict(self._resolve(params or {}))
         self._on_bar = self._ns["on_bar"]
-        # Konteks runtime yang diisi engine tiap bar (posisi, akun, tick, dll).
-        self._runtime = {"symbol": "", "positions": [], "account": {}, "tick": {}, "spec": {}}
+        # Konteks runtime yang diisi engine tiap bar (posisi, pending, akun, tick, dll).
+        self._state = {}
+        self.state_key = str(self.script_settings.get("name") or self._ns.get("NAME") or "custom_script").strip() or "custom_script"
+        self._runtime = {
+            "symbol": "", "positions": [], "pending_orders": [],
+            "account": {}, "tick": {}, "spec": {}, "rates_provider": None,
+        }
 
     def bind_runtime(self, symbol: str = "", positions=None, account=None,
-                     tick=None, spec=None) -> None:
+                     tick=None, spec=None, pending_orders=None,
+                     rates_provider=None, state=None) -> None:
         """Terima konteks runtime dari engine sebelum generate_signal dipanggil.
 
-        Mengisi ctx.position/positions/balance/equity/bid/ask/spread/waktu agar
-        skrip bisa cek posisi, harga live, dan sizing berbasis saldo.
+        Mengisi ctx.position/positions/pending_orders/balance/equity/bid/ask/spread/waktu/state
+        agar skrip bisa cek posisi, pending order, multi-timeframe, dan sizing berbasis saldo.
         """
+        if isinstance(state, dict):
+            self._state = state
         self._runtime = {
             "symbol": symbol or "",
             "positions": list(positions or []),
+            "pending_orders": list(pending_orders or []),
             "account": dict(account or {}),
             "tick": dict(tick or {}),
             "spec": dict(spec or {}),
+            "rates_provider": rates_provider,
         }
 
     def _resolve(self, params: dict) -> dict:
@@ -1036,7 +1150,10 @@ class ScriptStrategy(Strategy):
             ctx = ScriptContext(df, self.params, positions=rt.get("positions"),
                                 account=rt.get("account"), symbol=rt.get("symbol", ""),
                                 tick=rt.get("tick"), spec=rt.get("spec"),
-                                settings=self.script_settings)
+                                settings=self.script_settings,
+                                pending_orders=rt.get("pending_orders"),
+                                rates_provider=rt.get("rates_provider"),
+                                state=self._state)
             sig = _run_guarded(self._on_bar, ctx)
         except ScriptTimeout as exc:
             logger.error("Skrip strategi dihentikan: %s", exc)
@@ -1065,16 +1182,18 @@ import sys
 
 def _get_scripts_dir() -> str:
     env_dir = os.environ.get("XAVIQ_SCRIPTS_DIR")
-    if env_dir and os.path.exists(env_dir):
+    if env_dir:
         return env_dir
     local_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts")
     if os.path.exists(local_dir):
         return local_dir
-    for candidate in [
+    candidates = [
         os.path.join(os.getcwd(), "scripts"),
-        os.path.join(os.path.dirname(sys.executable), "scripts"),
         os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"),
-    ]:
+    ]
+    if getattr(sys, "frozen", False):
+        candidates.append(os.path.join(os.path.dirname(sys.executable), "scripts"))
+    for candidate in candidates:
         if os.path.exists(candidate):
             return candidate
     return local_dir

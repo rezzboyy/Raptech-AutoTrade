@@ -44,6 +44,7 @@ public:
     void reloadStrategy();
     void setChartSymbol(const QString &symbol);
     void setTimeframe(const QString &tf);
+    void runScriptSimulation(const QVariantMap &params);
     void requestStop();
     void enqueue(const ManualCommand &cmd);
     void enqueueClose(long long ticket);
@@ -69,6 +70,7 @@ signals:
     void connectedChanged(bool connected);
     void chartSymbolChanged(const QString &symbol);
     void timeframeChanged(const QString &timeframe);
+    void simulationResult(const QVariantMap &result);
     void logMessage(const QString &msg);
     void stopped();
 

@@ -67,9 +67,10 @@ def get_class(name: str):
 def create(name: str, params: dict = None):
     """Buat instance strategi berdasarkan nama + parameter."""
     if name == "custom_script":
-        from strategies.script_runtime import ScriptStrategy
+        from strategies.script_runtime import ScriptStrategy, DEFAULT_TEMPLATE
         from config import settings
-        return ScriptStrategy(settings.script_source, params or {})
+        src = settings.script_source if (settings.script_source and settings.script_source.strip()) else DEFAULT_TEMPLATE
+        return ScriptStrategy(src, params or {})
     cls = get_class(name)
     if cls is not None:
         return cls(**(params or {}))

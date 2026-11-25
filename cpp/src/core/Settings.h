@@ -7,9 +7,13 @@
 // Kredensial (login/password/server/mcpApiKey) TIDAK disimpan ke config.json.
 struct Settings {
     // ----- Koneksi -----
-    QString backend = "mcp";                                   // "native" | "mcp"
+    QString backend = "mcp";                                   // "native" | "mcp" | "sim"
     QString mcpEndpoint = "http://127.0.0.1:22346/mcp";
     QString mcpApiKey;                                          // dari mcp_secret.json / env
+    QString theme = "dark";                                    // "dark" | "light"
+    double simBalance = 10000.0;                               // saldo awal mode simulasi
+    QString simScenario = "volatile";                          // skenario market simulasi
+    int simSpreadPoints = 25;                                  // spread simulasi (points)
 
     // ----- Kredensial (tidak dipersist ke config.json) -----
     long long login = 0;

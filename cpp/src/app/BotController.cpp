@@ -162,6 +162,20 @@ BotController::~BotController()
 
 QString BotController::backend() const { return settings().backend; }
 
+QString BotController::theme() const { return settings().theme; }
+
+void BotController::setTheme(const QString &themeName)
+{
+    const QString t = (themeName.trimmed().compare(QStringLiteral("light"), Qt::CaseInsensitive) == 0)
+                          ? QStringLiteral("light")
+                          : QStringLiteral("dark");
+    if (settings().theme != t) {
+        settings().theme = t;
+        ConfigStore::save(settings());
+        emit themeChanged(t);
+    }
+}
+
 void BotController::setStatus(const QString &s)
 {
     if (m_status != s) {
@@ -187,7 +201,7 @@ void BotController::setTradingState(bool v)
 void BotController::setBackend(const QString &nameIn)
 {
     QString name = nameIn.toLower();
-    if (name != "native" && name != "mcp")
+    if (name != "native" && name != "mcp" && name != "sim")
         return;
     if (settings().backend != name) {
         settings().backend = name;
@@ -204,9 +218,33 @@ void BotController::setMcpConfig(const QString &endpoint, const QString &apiKey)
     setBackend(QStringLiteral("mcp"));
 }
 
+void BotController::ensureBridgeWorker()
+{
+    if (m_pyWorker)
+        return;
+
+    m_pyWorker = new PyBridgeWorker(this);
+    connect(m_pyWorker, &PyBridgeWorker::accountUpdated, this, &BotController::onAccount);
+    connect(m_pyWorker, &PyBridgeWorker::positionsUpdated, this, &BotController::onPositions);
+    connect(m_pyWorker, &PyBridgeWorker::ordersUpdated, this, &BotController::onOrders);
+    connect(m_pyWorker, &PyBridgeWorker::journalUpdated, this, &BotController::onJournal);
+    connect(m_pyWorker, &PyBridgeWorker::candlesUpdated, this, &BotController::onCandles);
+    connect(m_pyWorker, &PyBridgeWorker::symbolsListed, this, &BotController::onSymbols);
+    connect(m_pyWorker, &PyBridgeWorker::statsUpdated, this, &BotController::onStats);
+    connect(m_pyWorker, &PyBridgeWorker::equityUpdated, this, &BotController::onEquity);
+    connect(m_pyWorker, &PyBridgeWorker::autoTradingDisabled, this, &BotController::onAutoDisabled);
+    connect(m_pyWorker, &PyBridgeWorker::orderFeedback, this, &BotController::onOrderFeedback);
+    connect(m_pyWorker, &PyBridgeWorker::connectedChanged, this, &BotController::onWorkerConnected);
+    connect(m_pyWorker, &PyBridgeWorker::chartSymbolChanged, this, &BotController::onWorkerChartSymbol);
+    connect(m_pyWorker, &PyBridgeWorker::timeframeChanged, this, &BotController::onWorkerTimeframe);
+    connect(m_pyWorker, &PyBridgeWorker::simulationResult, this, &BotController::onSimulationResult);
+    connect(m_pyWorker, &PyBridgeWorker::logMessage, this, &BotController::logMessage);
+    connect(m_pyWorker, &PyBridgeWorker::stopped, this, &BotController::onWorkerStopped);
+}
+
 void BotController::connectBot()
 {
-    if (m_connected || (m_pyWorker && m_pyWorker->isRunning()))
+    if (m_connected)
         return;
 
     // Backend Native: hubungkan ke terminal MT5 lokal via kredensial akun
@@ -227,32 +265,10 @@ void BotController::connectBot()
     }
     setStatus(QStringLiteral("Menghubungkan..."));
 
-    // Jalankan Python Trading Engine via PyBridgeWorker
-    if (m_pyWorker) {
-        m_pyWorker->stopBridge();
-        m_pyWorker->deleteLater();
-        m_pyWorker = nullptr;
-    }
-
-    m_pyWorker = new PyBridgeWorker(this);
-    connect(m_pyWorker, &PyBridgeWorker::accountUpdated, this, &BotController::onAccount);
-    connect(m_pyWorker, &PyBridgeWorker::positionsUpdated, this, &BotController::onPositions);
-    connect(m_pyWorker, &PyBridgeWorker::ordersUpdated, this, &BotController::onOrders);
-    connect(m_pyWorker, &PyBridgeWorker::journalUpdated, this, &BotController::onJournal);
-    connect(m_pyWorker, &PyBridgeWorker::candlesUpdated, this, &BotController::onCandles);
-    connect(m_pyWorker, &PyBridgeWorker::symbolsListed, this, &BotController::onSymbols);
-    connect(m_pyWorker, &PyBridgeWorker::statsUpdated, this, &BotController::onStats);
-    connect(m_pyWorker, &PyBridgeWorker::equityUpdated, this, &BotController::onEquity);
-    connect(m_pyWorker, &PyBridgeWorker::autoTradingDisabled, this, &BotController::onAutoDisabled);
-    connect(m_pyWorker, &PyBridgeWorker::orderFeedback, this, &BotController::onOrderFeedback);
-    connect(m_pyWorker, &PyBridgeWorker::connectedChanged, this, &BotController::onWorkerConnected);
-    connect(m_pyWorker, &PyBridgeWorker::chartSymbolChanged, this, &BotController::onWorkerChartSymbol);
-    connect(m_pyWorker, &PyBridgeWorker::timeframeChanged, this, &BotController::onWorkerTimeframe);
-    connect(m_pyWorker, &PyBridgeWorker::logMessage, this, &BotController::logMessage);
-    connect(m_pyWorker, &PyBridgeWorker::stopped, this, &BotController::onWorkerStopped);
+    ensureBridgeWorker();
 
     QVariantMap p;
-    p[QStringLiteral("backend")] = settings().backend; // "native" (MetaTrader5 package) atau "mcp"
+    p[QStringLiteral("backend")] = settings().backend; // "native" | "mcp" | "sim"
     p[QStringLiteral("login")] = static_cast<qlonglong>(settings().login);
     p[QStringLiteral("password")] = settings().password;
     p[QStringLiteral("server")] = settings().server;
@@ -261,6 +277,9 @@ void BotController::connectBot()
     p[QStringLiteral("mcp_api_key")] = settings().mcpApiKey;
     p[QStringLiteral("symbol")] = m_chartSymbol.isEmpty() ? settings().symbol : m_chartSymbol;
     p[QStringLiteral("chart_symbol")] = m_chartSymbol.isEmpty() ? settings().symbol : m_chartSymbol;
+    p[QStringLiteral("sim_balance")] = settings().simBalance;
+    p[QStringLiteral("sim_scenario")] = settings().simScenario;
+    p[QStringLiteral("sim_spread_points")] = settings().simSpreadPoints;
 
     m_pyWorker->connectBackend(p);
 }
@@ -600,6 +619,55 @@ bool BotController::connectMcp(const QVariantMap &cfg, const QString &saveName)
     }
     connectBot();
     return true;
+}
+
+bool BotController::connectSim(const QVariantMap &cfg)
+{
+    const double bal = cfg.value(QStringLiteral("balance"), settings().simBalance).toDouble();
+    const QString sym = cfg.value(QStringLiteral("symbol")).toString().trimmed();
+    const QString scen = cfg.value(QStringLiteral("scenario"), settings().simScenario).toString().trimmed().toLower();
+    const int spread = cfg.value(QStringLiteral("spread_points"), settings().simSpreadPoints).toInt();
+
+    settings().simBalance = (bal >= 100.0) ? bal : 10000.0;
+    if (!scen.isEmpty())
+        settings().simScenario = scen;
+    settings().simSpreadPoints = (spread >= 1) ? spread : 25;
+    if (!sym.isEmpty()) {
+        settings().symbol = sym;
+        m_chartSymbol = sym;
+        emit chartSymbolChanged(sym);
+    }
+    setBackend(QStringLiteral("sim"));
+    ConfigStore::save(settings());
+    connectBot();
+    return true;
+}
+
+void BotController::runScriptSimulation(const QString &source,
+                                          const QString &scenario,
+                                          int bars,
+                                          double initialBalance,
+                                          int spreadPoints)
+{
+    const QVariantMap v = validateScript(source);
+    if (!v.value(QStringLiteral("ok")).toBool()) {
+        QVariantMap fail;
+        fail[QStringLiteral("ok")] = false;
+        fail[QStringLiteral("error")] = v.value(QStringLiteral("error")).toString();
+        emit simulationFinished(fail);
+        return;
+    }
+
+    ensureBridgeWorker();
+    QVariantMap p;
+    p[QStringLiteral("source")] = source;
+    p[QStringLiteral("symbol")] = m_chartSymbol.isEmpty() ? settings().symbol : m_chartSymbol;
+    p[QStringLiteral("timeframe")] = settings().timeframeStr;
+    p[QStringLiteral("scenario")] = scenario.trimmed().isEmpty() ? settings().simScenario : scenario.trimmed().toLower();
+    p[QStringLiteral("bars")] = (bars > 0) ? bars : 120;
+    p[QStringLiteral("initial_balance")] = (initialBalance >= 100.0) ? initialBalance : settings().simBalance;
+    p[QStringLiteral("spread_points")] = (spreadPoints >= 1) ? spreadPoints : settings().simSpreadPoints;
+    m_pyWorker->runScriptSimulation(p);
 }
 
 QVariantList BotController::listMcpProfiles()
@@ -1121,16 +1189,21 @@ QVariantList BotController::apiReference()
     out << group("Data Harga", {
         item("ctx.close", "Array harga close (lama→baru).", "ctx.close"),
         item("ctx.open / high / low", "Array OHLC.", "ctx.high"),
-        item("ctx.volume", "Array volume tick.", "ctx.volume")});
+        item("ctx.volume", "Array volume tick.", "ctx.volume"),
+        item("ctx.rates(tf, count)", "OHLCV multi-timeframe ('H1', 'M15', dll).", "ctx.rates(\"H1\", 200)")});
     out << group("Harga Live & Simbol", {
         item("ctx.bid / ctx.ask", "Harga live.", "ctx.ask"),
         item("ctx.spread", "Spread (points).", "ctx.spread"),
         item("ctx.point / ctx.digits", "Ukuran point & desimal.", "ctx.point"),
+        item("ctx.volume_min / step / max", "Batas & step lot broker.", "ctx.volume_step"),
+        item("ctx.stop_level / freeze_level", "Batas jarak stop broker (points).", "ctx.stop_level"),
         item("ctx.symbol", "Nama simbol aktif.", "ctx.symbol")});
-    out << group("Akun & Posisi", {
+    out << group("Akun, Posisi & State", {
         item("ctx.balance / ctx.equity", "Saldo & ekuitas.", "ctx.balance"),
         item("ctx.position", "Posisi aktif (objek) atau null.", "ctx.position"),
-        item("ctx.positions", "Semua posisi (array).", "ctx.positions")});
+        item("ctx.positions", "Semua posisi (array).", "ctx.positions"),
+        item("ctx.pending_orders", "Semua pending order aktif (array).", "ctx.pending_orders"),
+        item("ctx.state", "State persisten skrip antar-bar & restart.", "ctx.state")});
     out << group("Waktu", {
         item("ctx.hour / ctx.minute", "Jam & menit bar.", "ctx.hour"),
         item("ctx.weekday", "0=Senin..6=Minggu.", "ctx.weekday")});
@@ -1159,11 +1232,16 @@ QVariantList BotController::apiReference()
         item("ctx.crossover(a, b)", "a memotong ke atas b.", "ctx.crossover(fast, slow)"),
         item("ctx.crossunder(a, b)", "a memotong ke bawah b.", "ctx.crossunder(fast, slow)")});
     out << group("Perintah Order", {
-        item("ctx.buy(opts)", "Buka BUY (opts opsional).", "return ctx.buy({volume:0.01, sl_points:300, tp_points:600})"),
-        item("ctx.sell(opts)", "Buka SELL.", "return ctx.sell({volume:0.01})"),
-        item("ctx.close_position(opts)", "Tutup posisi (default: aktif).", "return ctx.close_position()"),
+        item("ctx.buy(...)", "Buka BUY.", "return ctx.buy(volume=0.01, sl_points=300, tp_points=600)"),
+        item("ctx.sell(...)", "Buka SELL.", "return ctx.sell(volume=0.01)"),
+        item("ctx.buy_stop / sell_stop(...)", "Pasang pending Stop order.", "ctx.buy_stop(price, volume=0.05)"),
+        item("ctx.buy_limit / sell_limit(...)", "Pasang pending Limit order.", "ctx.buy_limit(price, volume=0.05)"),
+        item("ctx.modify_order(ord, price)", "Ubah harga pending order.", "ctx.modify_order(ord, new_price)"),
+        item("ctx.delete_order(ord)", "Hapus pending order.", "ctx.delete_order(ord)"),
+        item("ctx.close_position(pos)", "Tutup posisi (default: aktif).", "return ctx.close_position()"),
+        item("ctx.close_side(side)", "Tutup semua posisi 'BUY' atau 'SELL'.", "ctx.close_side(\"BUY\")"),
         item("ctx.close_all()", "Tutup semua posisi.", "return ctx.close_all()"),
-        item("ctx.modify(opts)", "Ubah SL/TP.", "return ctx.modify({sl:1.09, tp:1.11})"),
+        item("ctx.modify(pos, sl, tp)", "Ubah SL/TP posisi.", "return ctx.modify(ctx.position, sl=1.09, tp=1.11)"),
         item("ctx.log(msg)", "Catat ke log/jurnal.", "ctx.log('halo')")});
     return out;
 }
@@ -1347,6 +1425,10 @@ void BotController::onWorkerConnected(bool connected)
         setStatus(QStringLiteral("Terhubung"));
         if (settings().backend.compare("native", Qt::CaseInsensitive) == 0) {
             emit logMessage(QStringLiteral("[MT5] Berhasil terhubung ke terminal MetaTrader 5."));
+        } else if (settings().backend.compare("sim", Qt::CaseInsensitive) == 0) {
+            emit logMessage(QStringLiteral("[SIMULASI] Terhubung ke mode Simulasi Paper-Trading (saldo virtual $%1, skenario '%2').")
+                                .arg(settings().simBalance, 0, 'f', 2)
+                                .arg(settings().simScenario));
         } else {
             emit logMessage(QStringLiteral("[MT5] Berhasil terhubung ke MCP MetaTrader 5."));
         }
@@ -1369,6 +1451,25 @@ void BotController::onWorkerTimeframe(const QString &timeframe)
         return;
     settings().timeframeStr = clean;
     emit timeframeChanged(clean);
+}
+void BotController::onSimulationResult(const QVariantMap &result)
+{
+    if (result.value(QStringLiteral("ok")).toBool()) {
+        emit logMessage(
+            QStringLiteral("[SIMULASI] Selesai (%1/%2 | %3): Trades=%4, Open=%5, Pending=%6, Net=$%7, WinRate=%8%, MaxDD=%9%")
+                .arg(result.value(QStringLiteral("symbol")).toString())
+                .arg(result.value(QStringLiteral("timeframe")).toString())
+                .arg(result.value(QStringLiteral("scenario")).toString())
+                .arg(result.value(QStringLiteral("trades_count")).toInt())
+                .arg(result.value(QStringLiteral("open_positions")).toInt())
+                .arg(result.value(QStringLiteral("pending_orders")).toInt())
+                .arg(result.value(QStringLiteral("net_profit")).toDouble(), 0, 'f', 2)
+                .arg(result.value(QStringLiteral("win_rate")).toDouble(), 0, 'f', 1)
+                .arg(result.value(QStringLiteral("max_drawdown_pct")).toDouble(), 0, 'f', 2));
+    } else {
+        emit logMessage(QStringLiteral("[SIMULASI] Gagal: %1").arg(result.value(QStringLiteral("error")).toString()));
+    }
+    emit simulationFinished(result);
 }
 void BotController::onWorkerStopped()
 {

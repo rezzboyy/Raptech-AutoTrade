@@ -106,6 +106,20 @@ private slots:
         QVariantList scripts = ctrl.listScripts();
         // Memastikan tidak crash saat memindai folder skrip
         QVERIFY(scripts.size() >= 0);
+
+        // Uji Bantuan API & SETTINGS Mode Programmer
+        QVERIFY(!ctrl.apiReference().isEmpty());
+        QVERIFY(!ctrl.settingsReference().isEmpty());
+        QVERIFY(!ctrl.settingsTemplate().isEmpty());
+
+        // Uji simpan -> daftar -> muat -> hapus skrip di Mode Programmer
+        const QString tmpName = QStringLiteral("smoke_prog_test");
+        QVERIFY(ctrl.saveScript(tmpName, pyScript));
+        QVERIFY(ctrl.listScripts().contains(tmpName));
+        QCOMPARE(ctrl.loadScript(tmpName), pyScript);
+        QVERIFY(ctrl.deleteScript(tmpName));
+        QVERIFY(!ctrl.listScripts().contains(tmpName));
+        QDir().rmdir(QStringLiteral("scripts"));
     }
 
     void computeOverlays_works()
@@ -218,6 +232,27 @@ private slots:
         // isInstalledMode returns a valid boolean without crashing
         bool mode = um.isInstalledMode();
         Q_UNUSED(mode);
+    }
+
+    void theme_and_simBackend()
+    {
+        BotController ctrl;
+        const QString origTheme = ctrl.theme();
+        const QString origBackend = ctrl.backend();
+
+        QSignalSpy spyTheme(&ctrl, &BotController::themeChanged);
+        ctrl.setTheme(QStringLiteral("light"));
+        QCOMPARE(ctrl.theme(), QStringLiteral("light"));
+        QCOMPARE(spyTheme.count(), origTheme == QStringLiteral("light") ? 0 : 1);
+
+        QSignalSpy spyBackend(&ctrl, &BotController::backendChanged);
+        ctrl.setBackend(QStringLiteral("sim"));
+        QCOMPARE(ctrl.backend(), QStringLiteral("sim"));
+        QCOMPARE(spyBackend.count(), origBackend == QStringLiteral("sim") ? 0 : 1);
+
+        // Pulihkan default
+        ctrl.setTheme(origTheme);
+        ctrl.setBackend(origBackend);
     }
 };
 

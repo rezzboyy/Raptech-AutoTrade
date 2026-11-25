@@ -339,6 +339,20 @@ void PyBridgeWorker::setTimeframe(const QString &tf)
     sendCommand(QStringLiteral("set_timeframe"), p);
 }
 
+void PyBridgeWorker::runScriptSimulation(const QVariantMap &params)
+{
+    if (!isRunning()) {
+        if (!startBridge()) {
+            QVariantMap err;
+            err[QStringLiteral("ok")] = false;
+            err[QStringLiteral("error")] = QStringLiteral("Gagal menjalankan engine Python simulasi.");
+            emit simulationResult(err);
+            return;
+        }
+    }
+    sendCommand(QStringLiteral("run_script_simulation"), params);
+}
+
 void PyBridgeWorker::requestStop()
 {
     disconnectBackend();
@@ -501,6 +515,8 @@ void PyBridgeWorker::handleEvent(const QString &event, const QVariant &data)
         emit chartSymbolChanged(m_chartSymbol);
     } else if (event == QLatin1String("timeframeChanged")) {
         emit timeframeChanged(data.toMap().value(QStringLiteral("timeframe")).toString());
+    } else if (event == QLatin1String("simulationResult")) {
+        emit simulationResult(data.toMap());
     } else if (event == QLatin1String("logMessage")) {
         emit logMessage(data.toMap().value(QStringLiteral("message")).toString());
     } else if (event == QLatin1String("stopped")) {

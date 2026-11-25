@@ -87,6 +87,8 @@ class NativeBackend:
             "tick_value": float(getattr(info, "trade_tick_value", 0.0) or 0.0),
             "tick_size": float(getattr(info, "trade_tick_size", 0.0) or 0.0),
             "stop_level": int(getattr(info, "trade_stops_level", 0) or 0),
+            "freeze_level": int(getattr(info, "trade_freeze_level", 0) or 0),
+            "contract_size": float(getattr(info, "trade_contract_size", 0.0) or 0.0),
         }
 
     def resolve_symbol(self, symbol: str) -> Optional[str]:
@@ -127,8 +129,8 @@ class NativeBackend:
 
     def get_rates(self, symbol: str, timeframe_str: str, count: int = 200):
         from src.market_data import get_rates
-        from config.settings import settings
-        tf = settings.timeframe  # konstanta MT5 dari timeframe_str aktif
+        from config.settings import settings, _TIMEFRAME_MAP
+        tf = _TIMEFRAME_MAP.get(str(timeframe_str or "").upper(), settings.timeframe)
         return get_rates(symbol, tf, count=count)
 
     def get_tick(self, symbol: str) -> Optional[dict]:
@@ -277,6 +279,28 @@ class NativeBackend:
         ok = result.retcode == mt5.TRADE_RETCODE_DONE
         return {"ok": ok, "ticket": int(getattr(result, "order", 0)) or None,
                 "message": "" if ok else f"retcode={result.retcode}"}
+
+    def modify_pending_order(self, ticket: int, price: float,
+                             sl: Optional[float] = None, tp: Optional[float] = None) -> dict:
+        import MetaTrader5 as mt5
+        orders = mt5.orders_get(ticket=int(ticket))
+        if not orders:
+            return {"ok": False, "ticket": ticket, "message": "pending order tidak ditemukan"}
+        o = orders[0]
+        request = {
+            "action": mt5.TRADE_ACTION_MODIFY,
+            "order": int(o.ticket),
+            "symbol": o.symbol,
+            "price": float(price),
+            "sl": float(sl if sl is not None else o.sl),
+            "tp": float(tp if tp is not None else o.tp),
+            "type_time": getattr(o, "type_time", mt5.ORDER_TIME_GTC),
+        }
+        result = mt5.order_send(request)
+        if result is None:
+            return {"ok": False, "ticket": ticket, "message": "order_send None"}
+        ok = result.retcode == mt5.TRADE_RETCODE_DONE
+        return {"ok": ok, "ticket": ticket, "message": "" if ok else f"retcode={result.retcode}"}
 
     def delete_pending_order(self, ticket: int) -> dict:
         import MetaTrader5 as mt5

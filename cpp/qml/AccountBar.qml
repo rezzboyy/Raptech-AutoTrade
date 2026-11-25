@@ -82,7 +82,7 @@ RowLayout {
                 color: {
                     if (!root.connected) return Theme.textMuted
                     if (bot && bot.accountType === "REAL") return Theme.down
-                    if (bot && bot.accountType === "CONTEST") return "#c9922e"
+                    if (bot && (bot.accountType === "CONTEST" || bot.accountType === "SIMULASI" || bot.accountType === "SIM")) return Theme.badgeWarnBorder
                     return Theme.up
                 }
                 font.pixelSize: 10
@@ -174,7 +174,7 @@ RowLayout {
                 width: 8
                 height: 8
                 radius: 4
-                color: root.live ? Theme.up : (root.connected ? "#c9922e" : Theme.down)
+                color: root.live ? Theme.up : (root.connected ? Theme.badgeWarnBorder : Theme.down)
             }
 
             ColumnLayout {
@@ -182,7 +182,7 @@ RowLayout {
                 Text { text: "BROKER"; color: Theme.textMuted; font.pixelSize: 9; font.letterSpacing: 0.5 }
                 Text {
                     text: root.live ? "Terhubung" : (root.connected ? "Menunggu" : "Offline")
-                    color: root.live ? Theme.up : (root.connected ? "#c9922e" : Theme.textMuted)
+                    color: root.live ? Theme.up : (root.connected ? Theme.badgeWarnBorder : Theme.textMuted)
                     font.pixelSize: 11
                     font.bold: true
                 }
@@ -226,7 +226,7 @@ RowLayout {
                     color: {
                         if (!root.connected) return Theme.textMuted
                         if (bot && bot.tradeBlocked) return Theme.down
-                        if (bot && !bot.tradeAllowed) return "#c9922e"
+                        if (bot && !bot.tradeAllowed) return Theme.badgeWarnBorder
                         return Theme.up
                     }
                     font.pixelSize: 11

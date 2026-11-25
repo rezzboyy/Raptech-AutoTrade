@@ -16,8 +16,20 @@ Rectangle {
     property var apiGroups: []
     property var settingsGroups: []
     property int errorLine: 0
+    property bool simRunning: false
+    property bool hasSimResult: false
+    property var simResult: ({})
     readonly property bool botTrading: bot ? bot.trading : false
     readonly property bool botConnected: bot ? bot.connected : false
+
+    Connections {
+        target: bot
+        function onSimulationFinished(res) {
+            root.simRunning = false
+            root.simResult = res || ({})
+            root.hasSimResult = true
+        }
+    }
 
     Component.onCompleted: {
         apiGroups = bot ? bot.apiReference() : []
@@ -194,7 +206,7 @@ Rectangle {
                 border.color: root.errorLine > 0 ? Theme.down : Theme.border
 
                 FontMetrics { id: fm; font: editor.font }
-                JsHighlighter { id: hl; document: editor.textDocument; errorLine: -1 }
+                JsHighlighter { id: hl; document: editor.textDocument; errorLine: -1; isDark: Theme.isDark }
 
                 Flickable {
                     id: flick
@@ -254,6 +266,77 @@ Rectangle {
                 spacing: 8
                 CButton { text: "Validasi"; icon.source: "qrc:/assets/activity.svg"; icon.width: 13; icon.height: 13; Layout.fillWidth: true; Layout.preferredHeight: 34; onClicked: root.runValidate() }
                 CButton { text: "Simpan & Terapkan Skrip"; bg: Theme.accent; fg: "#ffffff"; icon.source: "qrc:/assets/save.svg"; icon.width: 14; icon.height: 14; Layout.fillWidth: true; Layout.preferredHeight: 34; onClicked: { bot.setScript(editor.text); root.setStatus("Skrip disimpan & diterapkan (custom_script).", true) } }
+            }
+
+            // ===== Uji Simulasi Cepat (Terisolasi) =====
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                CCombo {
+                    id: simScenarioCombo
+                    Layout.preferredHeight: 32
+                    Layout.preferredWidth: 118
+                    Layout.fillWidth: false
+                    model: ["volatile", "uptrend", "downtrend", "sideways", "spread_spike"]
+                }
+                CCombo {
+                    id: simBarsCombo
+                    Layout.preferredHeight: 32
+                    Layout.preferredWidth: 94
+                    Layout.fillWidth: false
+                    model: ["120 bar", "240 bar", "360 bar"]
+                }
+                CButton {
+                    text: root.simRunning ? "Menguji..." : "Uji Simulasi"
+                    bg: Theme.warn; fg: "#ffffff"
+                    icon.source: "qrc:/assets/bolt.svg"; icon.width: 12; icon.height: 12
+                    Layout.fillWidth: true; Layout.preferredHeight: 32
+                    enabled: !root.simRunning && bot
+                    onClicked: {
+                        root.simRunning = true
+                        var barCnt = parseInt(simBarsCombo.currentText) || 120
+                        bot.runScriptSimulation(editor.text, simScenarioCombo.currentText, barCnt, 10000.0, 25)
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                visible: root.hasSimResult
+                radius: 6
+                color: (root.simResult.ok === true) ? Theme.bannerOkBg : Theme.bannerErrBg
+                border.color: (root.simResult.ok === true) ? Theme.up : Theme.down
+                border.width: 1
+                implicitHeight: simSummaryCol.implicitHeight + 12
+
+                ColumnLayout {
+                    id: simSummaryCol
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 2
+                    Text {
+                        Layout.fillWidth: true
+                        font.pixelSize: 11; font.bold: true
+                        color: (root.simResult.ok === true) ? Theme.up : Theme.down
+                        text: (root.simResult.ok === true)
+                              ? ("HASIL SIMULASI (" + (root.simResult.symbol || "") + " • " + (root.simResult.scenario || "") + ")")
+                              : "SIMULASI GAGAL — PERIKSA SKRIP"
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: 10
+                        color: Theme.textPrimary
+                        text: (root.simResult.ok === true)
+                              ? ("Trades: " + (root.simResult.trades_count || 0)
+                                 + " | Open: " + (root.simResult.open_positions || 0)
+                                 + " | Pending: " + (root.simResult.pending_orders || 0)
+                                 + " | WinRate: " + Number(root.simResult.win_rate || 0).toFixed(1) + "%"
+                                 + " | Net: " + (Number(root.simResult.net_profit || 0) >= 0 ? "+$" : "-$") + Math.abs(Number(root.simResult.net_profit || 0)).toFixed(2)
+                                 + " | MaxDD: " + Number(root.simResult.max_drawdown_pct || 0).toFixed(2) + "%")
+                              : String(root.simResult.error || "Kesalahan tidak diketahui")
+                    }
+                }
             }
             Button {
                 text: root.botTrading ? "Stop Trading" : "Start Trading"

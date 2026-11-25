@@ -501,7 +501,7 @@ Rectangle {
                         Rectangle {
                             height: 18
                             radius: 3
-                            color: resetSideMouse.containsMouse ? "#1E293B" : Theme.surface
+                            color: resetSideMouse.containsMouse ? Theme.hoverSurface : Theme.surface
                             border.color: resetSideMouse.containsMouse ? Theme.accent : Theme.border
                             border.width: 1
                             implicitWidth: resetSideText.implicitWidth + 12
@@ -536,7 +536,8 @@ Rectangle {
                         Rectangle {
                             height: 16
                             radius: 3
-                            color: (bot && bot.accountType === "REAL") ? Theme.down : Theme.btnStart
+                            color: (bot && bot.accountType === "REAL") ? Theme.down
+                                 : ((bot && (bot.accountType === "SIMULASI" || bot.accountType === "SIM")) ? Theme.warn : Theme.btnStart)
                             implicitWidth: typeLabel.implicitWidth + 8
                             Text {
                                 id: typeLabel

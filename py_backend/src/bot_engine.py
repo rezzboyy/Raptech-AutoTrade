@@ -8,6 +8,8 @@ Kelas ini TIDAK menjalankan loop sendiri. Loop dikendalikan oleh worker di
 controller (satu thread) agar semua panggilan MT5/MCP terjadi di thread yang sama.
 """
 
+import json
+import os
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
@@ -19,14 +21,29 @@ from src import trade_rules
 from strategies.base import SIGNAL_BUY, SIGNAL_SELL
 
 logger = get_logger("mt5bot")
+SCRIPT_STATE_FILE = "script_state.json"
 
 
 def make_backend():
-    """Buat backend sesuai konfigurasi. Default 'native'."""
-    if str(getattr(settings, "backend", "native")).lower() == "mcp":
+    """Buat backend sesuai konfigurasi. Mendukung 'native', 'mcp', dan 'sim'."""
+    backend_name = str(getattr(settings, "backend", "native")).lower()
+    if backend_name == "mcp":
         from src.backends.mcp_backend import McpBackend
         logger.info("Menggunakan backend MCP (%s).", settings.mcp_endpoint)
         return McpBackend(settings.mcp_endpoint, settings.mcp_api_key)
+    if backend_name == "sim":
+        from src.backends.sim_backend import SimBackend
+        logger.info(
+            "Menggunakan backend SIMULASI (saldo=$%.2f, skenario=%s).",
+            float(getattr(settings, "sim_balance", 10000.0)),
+            getattr(settings, "sim_scenario", "volatile"),
+        )
+        return SimBackend(
+            initial_balance=float(getattr(settings, "sim_balance", 10000.0)),
+            symbol=getattr(settings, "symbol", "XAUUSDm"),
+            scenario=getattr(settings, "sim_scenario", "volatile"),
+            spread_points=int(getattr(settings, "sim_spread_points", 25)),
+        )
     from src.backends.native_backend import NativeBackend
     logger.info("Menggunakan backend native (library MetaTrader5).")
     return NativeBackend()
@@ -35,7 +52,8 @@ def make_backend():
 class BotEngine:
     """Membungkus operasi tingkat tinggi untuk dipakai worker thread."""
 
-    def __init__(self, backend=None):
+    def __init__(self, backend=None, persist_state: bool = True):
+        self._persist_state = bool(persist_state)
         self.backend = backend if backend is not None else make_backend()
         self.strategy = self._build_strategy()
         # Level SL/TP virtual per ticket: {ticket: {symbol,type,sl,tp}}.
@@ -46,6 +64,42 @@ class BotEngine:
         self._last_trade_bar = {}
         self._last_trade_step = {}
         self._trade_steps = 0
+        self._script_state = self._load_script_state() if self._persist_state else {}
+
+    def _state_key(self) -> str:
+        return str(getattr(self.strategy, "state_key", "") or settings.script_name or settings.strategy_name or "custom_script")
+
+    def _load_script_state(self) -> dict:
+        if not SCRIPT_STATE_FILE or not os.path.exists(SCRIPT_STATE_FILE):
+            return {}
+        try:
+            with open(SCRIPT_STATE_FILE, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            if isinstance(data, dict):
+                val = data.get(self._state_key(), {})
+                return dict(val) if isinstance(val, dict) else {}
+        except (OSError, json.JSONDecodeError, TypeError):
+            pass
+        return {}
+
+    def _save_script_state(self) -> None:
+        if not self._persist_state or not SCRIPT_STATE_FILE:
+            return
+        all_data = {}
+        if os.path.exists(SCRIPT_STATE_FILE):
+            try:
+                with open(SCRIPT_STATE_FILE, "r", encoding="utf-8") as fh:
+                    loaded = json.load(fh)
+                if isinstance(loaded, dict):
+                    all_data = loaded
+            except (OSError, json.JSONDecodeError):
+                all_data = {}
+        all_data[self._state_key()] = dict(self._script_state or {})
+        try:
+            with open(SCRIPT_STATE_FILE, "w", encoding="utf-8") as fh:
+                json.dump(all_data, fh, indent=2)
+        except OSError as exc:
+            logger.debug("Gagal menyimpan script_state: %s", exc)
 
     def _journal(self, action: str, symbol: str, detail: str, ok: bool = True) -> None:
         """Catat aksi eksekusi ke jurnal (bila callback tersedia). Fail-safe."""
@@ -71,6 +125,7 @@ class BotEngine:
 
     def rebuild_strategy(self) -> None:
         self.strategy = self._build_strategy()
+        self._script_state = self._load_script_state()
         logger.info("Strategi diperbarui: %s %s", self.strategy.display_name, self.strategy.params)
 
     def rebuild_backend(self) -> None:
@@ -758,20 +813,47 @@ class BotEngine:
                 return True
 
         # 4) Evaluasi strategi per simbol.
+        if not hasattr(self, "_script_state") or not isinstance(self._script_state, dict):
+            self._script_state = {}
+        state_before = json.dumps(self._script_state, sort_keys=True, default=str)
+
         for sym in settings.symbols_list:
             df = self.backend.get_rates(sym, settings.timeframe_str, count=200)
             if df is None or df.empty:
                 continue
             cur_bar_time = str(df.index[-1]) if len(df.index) > 0 else ""
-            # Beri konteks runtime ke strategi skrip (posisi, akun, tick/harga) agar
-            # skrip bisa cek ctx.position, harga live, dan sizing berbasis saldo.
+            tf_cache = {(settings.timeframe_str.upper(), 200): df}
+
+            def _rates_provider(tf, cnt=200, _sym=sym, _cache=tf_cache):
+                key = (str(tf or "").strip().upper(), int(cnt))
+                if key not in _cache:
+                    _cache[key] = self.backend.get_rates(_sym, key[0], count=key[1])
+                return _cache[key]
+
+            try:
+                pend_orders = self.backend.pending_orders(sym) or []
+            except Exception:  # noqa: BLE001
+                pend_orders = []
+
+            # Beri konteks runtime ke strategi skrip (posisi, pending, akun, tick/harga, multi-TF, state).
             binder = getattr(self.strategy, "bind_runtime", None)
             if callable(binder):
                 try:
                     binder(symbol=sym, positions=self.backend.positions(sym),
                            account=self.backend.account_info() or {},
                            tick=self.backend.get_tick(sym),
-                           spec=self.backend.symbol_spec(sym))
+                           spec=self.backend.symbol_spec(sym),
+                           pending_orders=pend_orders,
+                           rates_provider=_rates_provider,
+                           state=self._script_state)
+                except TypeError:
+                    try:
+                        binder(symbol=sym, positions=self.backend.positions(sym),
+                               account=self.backend.account_info() or {},
+                               tick=self.backend.get_tick(sym),
+                               spec=self.backend.symbol_spec(sym))
+                    except Exception:  # noqa: BLE001
+                        pass
                 except Exception:  # noqa: BLE001
                     try:
                         binder(symbol=sym)
@@ -781,6 +863,10 @@ class BotEngine:
             for cmd in self._normalize_commands(result):
                 cmd["_bar_time"] = cur_bar_time
                 self._execute_command(sym, cmd)
+
+        state_after = json.dumps(self._script_state, sort_keys=True, default=str)
+        if state_after != state_before:
+            self._save_script_state()
         return True
 
     @staticmethod
@@ -867,6 +953,56 @@ class BotEngine:
             elif action == "CLOSE_ALL":
                 n = self.close_all(symbol)
                 self._journal("CLOSE_ALL", symbol, f"tutup semua ({n} posisi)", True)
+            elif action == "CLOSE_SIDE":
+                side = str(cmd.get("side", "")).upper()
+                closed = 0
+                magic = getattr(settings, "magic_number", 0)
+                for p in self.backend.positions(symbol):
+                    if magic > 0 and p.get("magic", 0) != magic:
+                        continue
+                    p_type = str(p.get("type", "")).upper()
+                    is_match = (side == "BUY" and ("BUY" in p_type or p_type == "0")) or \
+                               (side == "SELL" and ("SELL" in p_type or p_type == "1"))
+                    if not is_match:
+                        continue
+                    t_num = p.get("ticket")
+                    if t_num and self.backend.close_position(int(t_num), p["symbol"]).get("ok"):
+                        self._virtual.pop(int(t_num), None)
+                        closed += 1
+                self._journal("CLOSE_SIDE", symbol, f"tutup sisi {side} ({closed} posisi)", True)
+            elif action == "PENDING":
+                order_type = str(cmd.get("order_type", "")).lower()
+                price = float(cmd.get("price", 0.0) or 0.0)
+                volume = float(cmd.get("volume", 0.0) or 0.0)
+                sl = float(cmd.get("sl", 0.0) or 0.0)
+                tp = float(cmd.get("tp", 0.0) or 0.0)
+                cmt = str(cmd.get("comment") or strat_cfg.get("comment") or "mt5bot")
+                max_exp = float(getattr(settings, "max_exposure_lots", 0.0) or 0.0)
+                if max_exp > 0 and (trade_rules.current_exposure(self.backend, settings.magic_number) + volume > max_exp + 1e-9):
+                    self._journal("PENDING", symbol, f"dilewati (melebihi batas eksposur {max_exp} lot)", False)
+                    return
+                res = self.backend.send_pending_order(
+                    symbol, order_type, volume, price, sl=sl, tp=tp,
+                    magic=settings.magic_number, comment=cmt,
+                )
+                ok = bool(res.get("ok"))
+                msg = f"{order_type.upper()} vol={volume:.2f} @ {price:.3f}" + ("" if ok else f" -> {res.get('message', 'Gagal')}")
+                self._journal("PENDING", symbol, msg, ok)
+            elif action == "DELETE_ORDER":
+                ticket = cmd.get("ticket")
+                if ticket:
+                    res = self.backend.delete_pending_order(int(ticket))
+                    ok = bool(res.get("ok"))
+                    self._journal("DELETE_ORDER", symbol, f"hapus pending #{ticket}", ok)
+            elif action == "MODIFY_ORDER":
+                ticket = cmd.get("ticket")
+                price = cmd.get("price")
+                if ticket and price is not None:
+                    res = self.backend.modify_pending_order(
+                        int(ticket), float(price), sl=cmd.get("sl"), tp=cmd.get("tp")
+                    )
+                    ok = bool(res.get("ok"))
+                    self._journal("MODIFY_ORDER", symbol, f"ubah pending #{ticket} -> @ {float(price):.3f}", ok)
             elif action == "MODIFY":
                 ticket = cmd.get("ticket")
                 if ticket:

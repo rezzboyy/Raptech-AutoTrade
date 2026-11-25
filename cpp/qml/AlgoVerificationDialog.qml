@@ -138,15 +138,15 @@ Dialog {
                     implicitHeight: bannerCol.implicitHeight + 16
                     radius: 8
                     color: {
-                        if (root.diagData.status === "OK") return "#163828"
-                        if (root.diagData.status === "ERROR") return "#3d1818"
-                        if (root.diagData.status === "WARNING") return "#3d2e12"
+                        if (root.diagData.status === "OK") return Theme.bannerOkBg
+                        if (root.diagData.status === "ERROR") return Theme.bannerErrBg
+                        if (root.diagData.status === "WARNING") return Theme.bannerWarnBg
                         return Theme.surfaceAlt
                     }
                     border.color: {
                         if (root.diagData.status === "OK") return Theme.up
                         if (root.diagData.status === "ERROR") return Theme.down
-                        if (root.diagData.status === "WARNING") return "#c9922e"
+                        if (root.diagData.status === "WARNING") return Theme.badgeWarnBorder
                         return Theme.border
                     }
                     border.width: 1
@@ -164,7 +164,7 @@ Dialog {
                             color: {
                                 if (root.diagData.status === "OK") return Theme.up
                                 if (root.diagData.status === "ERROR") return Theme.down
-                                if (root.diagData.status === "WARNING") return "#c9922e"
+                                if (root.diagData.status === "WARNING") return Theme.badgeWarnBorder
                                 return Theme.textMuted
                             }
                             Image {
@@ -187,7 +187,7 @@ Dialog {
                                 color: {
                                     if (root.diagData.status === "OK") return Theme.up
                                     if (root.diagData.status === "ERROR") return Theme.down
-                                    if (root.diagData.status === "WARNING") return "#ffb84d"
+                                    if (root.diagData.status === "WARNING") return Theme.badgeWarnText
                                     return Theme.textSecondary
                                 }
                                 font.pixelSize: 13
@@ -335,7 +335,7 @@ Dialog {
                             spacing: 8
                             Text {
                                 text: root.diagData.symbol_valid ? "✓" : "!"
-                                color: root.diagData.symbol_valid ? Theme.up : "#c9922e"
+                                color: root.diagData.symbol_valid ? Theme.up : Theme.badgeWarnBorder
                                 font.bold: true
                                 font.pixelSize: 13
                             }
@@ -347,7 +347,7 @@ Dialog {
                             }
                             Text {
                                 text: (root.diagData.symbol || "EURUSDm") + (root.diagData.symbol_valid ? " — Valid & Siap Trade" : " — Periksa Suffix Broker (m)")
-                                color: root.diagData.symbol_valid ? Theme.up : "#ffb84d"
+                                color: root.diagData.symbol_valid ? Theme.up : Theme.badgeWarnText
                                 font.pixelSize: 11
                                 font.bold: true
                                 Layout.fillWidth: true
@@ -360,7 +360,7 @@ Dialog {
                 Rectangle {
                     Layout.fillWidth: true
                     visible: root.diagData.trade_blocked === true
-                    color: "#301515"
+                    color: Theme.dangerTint
                     radius: 8
                     border.color: Theme.down
                     border.width: 1
@@ -380,7 +380,7 @@ Dialog {
                         }
                         Text {
                             text: root.diagData.reject_reason || "Trading tidak diizinkan oleh terminal MT5 ('trading is not permitted')."
-                            color: "#ffc2c2"
+                            color: Theme.dangerText
                             font.pixelSize: 10
                             wrapMode: Text.WordWrap
                             Layout.fillWidth: true

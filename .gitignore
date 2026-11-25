@@ -2,8 +2,12 @@
 .env
 account.txt
 
-# Konfigurasi runtime (di-generate dari UI)
+# Konfigurasi runtime & state skrip (di-generate dari UI)
 config.json
+script_state.json
+
+# Skrip pribadi trader (jangan ikut commit/release)
+Sc Pribadi Trader/
 
 # Profil kredensial (berisi password tersandi) - JANGAN pernah di-commit
 profiles/

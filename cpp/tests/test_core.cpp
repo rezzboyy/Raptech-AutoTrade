@@ -184,6 +184,25 @@ private slots:
         const QString legacy = QString::fromLatin1(QByteArray("hello").toBase64());
         QCOMPARE(SecureStore::decrypt(legacy), QStringLiteral("hello"));
     }
+
+    // ---------- Theme & Sim Backend ----------
+    void configValidate_themeAndSimBackend()
+    {
+        Settings s;
+        QJsonObject okObj;
+        okObj["theme"] = "LIGHT";
+        okObj["backend"] = "SIM";
+        const QStringList errs = ConfigStore::apply(okObj, s);
+        QVERIFY(errs.isEmpty());
+        QCOMPARE(s.theme, QStringLiteral("light"));
+        QCOMPARE(s.backend, QStringLiteral("sim"));
+        QCOMPARE(ConfigStore::toJson(s).value("theme").toString(), QStringLiteral("light"));
+
+        QJsonObject badObj;
+        badObj["theme"] = "sepia";
+        badObj["backend"] = "unknown";
+        QCOMPARE(ConfigStore::validate(badObj, s).size(), 2);
+    }
 };
 
 QTEST_APPLESS_MAIN(TestCore)
