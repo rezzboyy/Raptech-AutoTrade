@@ -1099,17 +1099,31 @@ QVariantMap BotController::inspectScriptVariables(const QString &source)
         }
     }
 
-    // Ekstrak PARAMS declared keys
+    // Ekstrak PARAMS declared keys — mendukung format list [{"key": "..."}, ...]
+    // maupun format dict {"nama_param": nilai_default, ...} (seperti GMG V1.1).
     QStringList declaredParams;
-    const QRegularExpression reParamsBlock(QStringLiteral("\\bPARAMS\\s*=\\s*\\[([\\s\\S]*?)\\]"));
-    const QRegularExpressionMatch pm = reParamsBlock.match(stripped);
-    if (pm.hasMatch()) {
+    const QRegularExpression reParamsList(QStringLiteral("\\bPARAMS\\s*=\\s*\\[([\\s\\S]*?)\\]"));
+    const QRegularExpressionMatch pml = reParamsList.match(stripped);
+    if (pml.hasMatch()) {
         const QRegularExpression rePKey(QStringLiteral("[\"']key[\"']\\s*:\\s*[\"']([A-Za-z_][A-Za-z0-9_]*)[\"']"));
-        auto it = rePKey.globalMatch(pm.captured(1));
+        auto it = rePKey.globalMatch(pml.captured(1));
         while (it.hasNext()) {
             const QString pk = it.next().captured(1);
             if (!declaredParams.contains(pk))
                 declaredParams << pk;
+        }
+    } else {
+        const QRegularExpression reParamsDict(QStringLiteral("\\bPARAMS\\s*=\\s*\\{([\\s\\S]*?)\\}"));
+        const QRegularExpressionMatch pmd = reParamsDict.match(stripped);
+        if (pmd.hasMatch()) {
+            const QRegularExpression reDKey(QStringLiteral("[\"']([A-Za-z_][A-Za-z0-9_]*)[\"']\\s*:|\\b([A-Za-z_][A-Za-z0-9_]*)\\s*:"));
+            auto it = reDKey.globalMatch(pmd.captured(1));
+            while (it.hasNext()) {
+                const QRegularExpressionMatch km = it.next();
+                const QString pk = (!km.captured(1).isEmpty() ? km.captured(1) : km.captured(2)).trimmed();
+                if (!pk.isEmpty() && !declaredParams.contains(pk))
+                    declaredParams << pk;
+            }
         }
     }
 

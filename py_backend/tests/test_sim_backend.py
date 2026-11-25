@@ -222,3 +222,13 @@ def on_bar(ctx):
     assert "unknown_opt" in r_warn["unknown_settings"]
     assert "unknown_method" in r_warn["unknown_ctx"]
     assert "missing_param" in r_warn["undeclared_params"]
+
+    # Verifikasi script pribadi GMG V1.1 (format PARAMS = {...} dict) -> VALID 0 warning
+    gmg_path = Path(__file__).resolve().parents[2] / "Sc Pribadi Trader" / "golden_mirror_grid_xauusdm_v1_1.py"
+    r_gmg = inspect_script_variables(gmg_path.read_text(encoding="utf-8"))
+    assert r_gmg["ok"] is True
+    assert r_gmg["has_warnings"] is False
+    assert r_gmg["status"] == "VALID"
+    assert r_gmg["unknown_settings"] == []
+    assert r_gmg["unknown_ctx"] == []
+    assert r_gmg["undeclared_params"] == []

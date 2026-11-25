@@ -283,6 +283,21 @@ private slots:
         QCOMPARE(warnRes["status"].toString(), QStringLiteral("PERINGATAN"));
         QVERIFY(warnRes["unknownSettings"].toStringList().contains(QStringLiteral("typo_key")));
         QVERIFY(warnRes["unknownCtxMembers"].toStringList().contains(QStringLiteral("non_existent_api")));
+
+        // Format PARAMS = {...} (dict, seperti GMG V1.1) harus dikenali semua key-nya
+        const QString dictParamsScript = QStringLiteral(
+            "SETTINGS = {'volume': 0.05}\n"
+            "PARAMS = {'verbose': True, 'base_lot': 0.05}\n"
+            "def on_bar(ctx):\n"
+            "    if ctx.params.verbose:\n"
+            "        return ctx.buy(volume=ctx.params.base_lot)\n"
+            "    return None\n"
+        );
+        QVariantMap dictRes = ctrl.inspectScriptVariables(dictParamsScript);
+        QCOMPARE(dictRes["ok"].toBool(), true);
+        QCOMPARE(dictRes["hasWarnings"].toBool(), false);
+        QCOMPARE(dictRes["status"].toString(), QStringLiteral("VALID"));
+        QCOMPARE(dictRes["undeclaredParams"].toStringList().size(), 0);
     }
 
     void simConnectAndLogout_noCrashAndAuthLoading()

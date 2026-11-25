@@ -525,10 +525,16 @@ def inspect_script_variables(source: str) -> dict:
     settings_keys = list(raw_settings.keys()) if isinstance(raw_settings, dict) else []
     unknown_settings = [str(k) for k in settings_keys if str(k) not in _KNOWN_SETTINGS_KEYS]
 
-    declared_params = {
-        str(p.get("key")) for p in (ns.get("PARAMS") or [])
-        if isinstance(p, dict) and p.get("key")
-    }
+    raw_params = ns.get("PARAMS")
+    if isinstance(raw_params, dict):
+        declared_params = {str(k) for k in raw_params.keys() if k}
+    elif isinstance(raw_params, (list, tuple)):
+        declared_params = {
+            str(p.get("key")) for p in raw_params
+            if isinstance(p, dict) and p.get("key")
+        }
+    else:
+        declared_params = set()
 
     tree = ast.parse(source)
     unknown_ctx = []
